@@ -1,6 +1,7 @@
-data/
-.venv/
-.vscode/
+# leading "/" = only at the repo root (so src/data/ is still tracked)
+/data/
+/.venv/
+/.vscode/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/

@@ -1,7 +1,7 @@
 """Exploratory data analysis of PTB-XL for the 5-superclass multi-label task.
 
 Run from the project root:
-    python src/visualize/exploratory_data_analysis.py
+    python -m src.visualize.exploratory_data_analysis
 
 Writes figures to eda/figures/ (report versions) and eda/figures/slides/
 (versions sized for the presentation), and the numbers quoted in the report to

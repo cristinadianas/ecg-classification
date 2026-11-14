@@ -1,0 +1,438 @@
+{
+  "records": 21837,
+  "patients": 18885,
+  "patients_with_multiple_records": 2127,
+  "max_records_per_patient": 10,
+  "records_per_class": {
+    "NORM": 9528,
+    "MI": 5486,
+    "STTC": 5250,
+    "CD": 4907,
+    "HYP": 2655
+  },
+  "share_per_class": {
+    "NORM": 0.4363,
+    "MI": 0.2512,
+    "STTC": 0.2404,
+    "CD": 0.2247,
+    "HYP": 0.1216
+  },
+  "only_this_label": {
+    "NORM": 9083,
+    "MI": 2538,
+    "STTC": 2406,
+    "CD": 1709,
+    "HYP": 536
+  },
+  "only_this_label_share": {
+    "NORM": 0.953,
+    "MI": 0.463,
+    "STTC": 0.458,
+    "CD": 0.348,
+    "HYP": 0.202
+  },
+  "labels_per_record": {
+    "0": 407,
+    "1": 16272,
+    "2": 4079,
+    "3": 920,
+    "4": 159
+  },
+  "records_without_superclass": 407,
+  "norm_to_hyp_ratio": 3.59,
+  "age_median": 62.0,
+  "age_range": [
+    2.0,
+    95.0
+  ],
+  "male_share": 0.521,
+  "recording_years": [
+    "1984",
+    "2001"
+  ],
+  "second_opinion": 557,
+  "validated_by_human": 16094,
+  "records_per_fold": {
+    "1": 2177,
+    "2": 2184,
+    "3": 2194,
+    "4": 2175,
+    "5": 2176,
+    "6": 2178,
+    "7": 2178,
+    "8": 2179,
+    "9": 2193,
+    "10": 2203
+  },
+  "height_available": 0.32,
+  "weight_available": 0.432,
+  "conditional_cooccurrence": {
+    "NORM": {
+      "NORM": 1.0,
+      "MI": 0.0,
+      "STTC": 0.003,
+      "CD": 0.044,
+      "HYP": 0.001
+    },
+    "MI": {
+      "NORM": 0.0,
+      "MI": 1.0,
+      "STTC": 0.245,
+      "CD": 0.328,
+      "HYP": 0.15
+    },
+    "STTC": {
+      "NORM": 0.006,
+      "MI": 0.256,
+      "STTC": 1.0,
+      "CD": 0.204,
+      "HYP": 0.288
+    },
+    "CD": {
+      "NORM": 0.085,
+      "MI": 0.367,
+      "STTC": 0.218,
+      "CD": 1.0,
+      "HYP": 0.161
+    },
+    "HYP": {
+      "NORM": 0.002,
+      "MI": 0.309,
+      "STTC": 0.57,
+      "CD": 0.297,
+      "HYP": 1.0
+    }
+  },
+  "superclass_cooccurrence_counts": {
+    "NORM": {
+      "NORM": 9528,
+      "MI": 1,
+      "STTC": 33,
+      "CD": 415,
+      "HYP": 5
+    },
+    "MI": {
+      "NORM": 1,
+      "MI": 5486,
+      "STTC": 1345,
+      "CD": 1801,
+      "HYP": 821
+    },
+    "STTC": {
+      "NORM": 33,
+      "MI": 1345,
+      "STTC": 5250,
+      "CD": 1069,
+      "HYP": 1514
+    },
+    "CD": {
+      "NORM": 415,
+      "MI": 1801,
+      "STTC": 1069,
+      "CD": 4907,
+      "HYP": 789
+    },
+    "HYP": {
+      "NORM": 5,
+      "MI": 821,
+      "STTC": 1514,
+      "CD": 789,
+      "HYP": 2655
+    }
+  },
+  "top_subclass_pairs": [
+    {
+      "pair": [
+        "ISC_",
+        "LVH"
+      ],
+      "records": 1172,
+      "superclasses": [
+        "STTC",
+        "HYP"
+      ],
+      "share_of_rarer": 0.919
+    },
+    {
+      "pair": [
+        "IMI",
+        "AMI"
+      ],
+      "records": 996,
+      "superclasses": [
+        "MI",
+        "MI"
+      ],
+      "share_of_rarer": 0.323
+    },
+    {
+      "pair": [
+        "AMI",
+        "LAFB/LPFB"
+      ],
+      "records": 672,
+      "superclasses": [
+        "MI",
+        "CD"
+      ],
+      "share_of_rarer": 0.373
+    },
+    {
+      "pair": [
+        "AMI",
+        "LVH"
+      ],
+      "records": 400,
+      "superclasses": [
+        "MI",
+        "HYP"
+      ],
+      "share_of_rarer": 0.187
+    },
+    {
+      "pair": [
+        "IMI",
+        "LVH"
+      ],
+      "records": 318,
+      "superclasses": [
+        "MI",
+        "HYP"
+      ],
+      "share_of_rarer": 0.149
+    },
+    {
+      "pair": [
+        "IMI",
+        "LAFB/LPFB"
+      ],
+      "records": 290,
+      "superclasses": [
+        "MI",
+        "CD"
+      ],
+      "share_of_rarer": 0.161
+    },
+    {
+      "pair": [
+        "AMI",
+        "ISC_"
+      ],
+      "records": 290,
+      "superclasses": [
+        "MI",
+        "STTC"
+      ],
+      "share_of_rarer": 0.227
+    },
+    {
+      "pair": [
+        "AMI",
+        "_AVB"
+      ],
+      "records": 258,
+      "superclasses": [
+        "MI",
+        "CD"
+      ],
+      "share_of_rarer": 0.312
+    },
+    {
+      "pair": [
+        "NORM",
+        "IRBBB"
+      ],
+      "records": 250,
+      "superclasses": [
+        "NORM",
+        "CD"
+      ],
+      "share_of_rarer": 0.224
+    },
+    {
+      "pair": [
+        "AMI",
+        "ISCA"
+      ],
+      "records": 246,
+      "superclasses": [
+        "MI",
+        "STTC"
+      ],
+      "share_of_rarer": 0.261
+    },
+    {
+      "pair": [
+        "LAFB/LPFB",
+        "CRBBB"
+      ],
+      "records": 245,
+      "superclasses": [
+        "CD",
+        "CD"
+      ],
+      "share_of_rarer": 0.452
+    },
+    {
+      "pair": [
+        "IMI",
+        "ISCA"
+      ],
+      "records": 242,
+      "superclasses": [
+        "MI",
+        "STTC"
+      ],
+      "share_of_rarer": 0.256
+    },
+    {
+      "pair": [
+        "IMI",
+        "ISC_"
+      ],
+      "records": 230,
+      "superclasses": [
+        "MI",
+        "STTC"
+      ],
+      "share_of_rarer": 0.18
+    },
+    {
+      "pair": [
+        "AMI",
+        "IVCD"
+      ],
+      "records": 212,
+      "superclasses": [
+        "MI",
+        "CD"
+      ],
+      "share_of_rarer": 0.269
+    },
+    {
+      "pair": [
+        "IMI",
+        "IVCD"
+      ],
+      "records": 211,
+      "superclasses": [
+        "MI",
+        "CD"
+      ],
+      "share_of_rarer": 0.267
+    }
+  ],
+  "median_age": {
+    "NORM": 54.0,
+    "MI": 67.0,
+    "STTC": 68.0,
+    "CD": 68.0,
+    "HYP": 68.0
+  },
+  "male_share_per_class": {
+    "NORM": 0.461,
+    "MI": 0.623,
+    "STTC": 0.49,
+    "CD": 0.613,
+    "HYP": 0.574
+  },
+  "quality_flag_share": {
+    "Static noise": 0.1494,
+    "Extra beats": 0.0895,
+    "Baseline drift": 0.0736,
+    "Burst noise": 0.0281,
+    "Pacemaker": 0.0134,
+    "Electrode problems": 0.0014
+  },
+  "any_quality_flag_share": 0.3034,
+  "likelihood_share": {
+    "100": 0.7446,
+    "80": 0.0722,
+    "50": 0.1055,
+    "35": 0.0136,
+    "15": 0.0571,
+    "0": 0.0069
+  },
+  "likelihood_other_share": 0.0001,
+  "validated_by_human_per_fold": {
+    "1": 0.673,
+    "2": 0.663,
+    "3": 0.67,
+    "4": 0.681,
+    "5": 0.677,
+    "6": 0.642,
+    "7": 0.68,
+    "8": 0.679,
+    "9": 1.0,
+    "10": 1.0
+  },
+  "fold_prevalence_range_pct_points": {
+    "NORM": 2.59,
+    "MI": 1.83,
+    "STTC": 0.98,
+    "CD": 0.8,
+    "HYP": 0.46
+  },
+  "example_ecg_id": 3,
+  "median_beats": {
+    "NORM": {
+      "records_used": 600,
+      "st_level_V2_mV": 0.085,
+      "st_level_V5_mV": -0.004,
+      "r_amp_V5_mV": 1.26,
+      "s_depth_V2_mV": -1.014
+    },
+    "MI": {
+      "records_used": 600,
+      "st_level_V2_mV": 0.078,
+      "st_level_V5_mV": -0.009,
+      "r_amp_V5_mV": 0.933,
+      "s_depth_V2_mV": -1.105
+    },
+    "STTC": {
+      "records_used": 600,
+      "st_level_V2_mV": 0.053,
+      "st_level_V5_mV": -0.036,
+      "r_amp_V5_mV": 1.194,
+      "s_depth_V2_mV": -1.029
+    },
+    "CD": {
+      "records_used": 600,
+      "st_level_V2_mV": 0.08,
+      "st_level_V5_mV": -0.014,
+      "r_amp_V5_mV": 0.733,
+      "s_depth_V2_mV": -0.917
+    },
+    "HYP": {
+      "records_used": 410,
+      "st_level_V2_mV": 0.118,
+      "st_level_V5_mV": -0.018,
+      "r_amp_V5_mV": 2.104,
+      "s_depth_V2_mV": -1.181
+    }
+  },
+  "limb_lead_median_relative_error": {
+    "III = II - I": 0.0046,
+    "aVR = -(I + II) / 2": 0.0037,
+    "aVL = I - II / 2": 0.0052,
+    "aVF = II - I / 2": 0.005
+  },
+  "lead_correlation_sample": 4000,
+  "records_with_flat_lead": 1,
+  "median_std_per_lead_mV": {
+    "I": 0.13,
+    "II": 0.133,
+    "III": 0.108,
+    "aVR": 0.122,
+    "aVL": 0.099,
+    "aVF": 0.102,
+    "V1": 0.158,
+    "V2": 0.249,
+    "V3": 0.247,
+    "V4": 0.239,
+    "V5": 0.215,
+    "V6": 0.176
+  },
+  "abs_amplitude_p99_9_mV": 2.18,
+  "abs_amplitude_max_mV": 20.03
+}

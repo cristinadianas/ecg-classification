@@ -4,9 +4,11 @@ a module mapping (batch, leads, time) -> (batch, num_classes) logits."""
 
 from torch import nn
 
+from src.models.fcn1d import fcn1d
 from src.models.resnet1d import resnet1d18, resnet1d34
 
 MODELS = {
+    "fcn1d": fcn1d,
     "resnet1d18": resnet1d18,
     "resnet1d34": resnet1d34,
 }

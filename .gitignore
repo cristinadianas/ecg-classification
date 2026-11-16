@@ -9,3 +9,5 @@ __pycache__/
 # model weights (large); metrics, histories and figures under runs/ are tracked
 *.pt
 *.log
+
+Miniforge3-Linux-x86_64.sh

@@ -11,3 +11,5 @@ __pycache__/
 *.log
 
 Miniforge3-Linux-x86_64.sh
+
+/documentation/intermediate_report_and_presentation_instructions.md

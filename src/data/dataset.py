@@ -110,14 +110,29 @@ def load_splits(fs: int, leads: str = "all12", processed_dir: Path = PROCESSED_D
 
 
 class Standardizer:
-    """Per-lead z-scoring with statistics from the training split only."""
+    """z-scoring with statistics from the training split only.
 
-    def __init__(self, mean=None, std=None):
-        self.mean, self.std = mean, std
+    mode "per_lead" (our standard): one mean/std per lead.
+    mode "global": one mean/std over all leads and samples, as in the PTB-XL benchmark
+    (Strodthoff et al., 2021). Stored as per-lead arrays either way, so transform/load
+    do not depend on the mode.
+    """
+
+    MODES = ("per_lead", "global")
+
+    def __init__(self, mean=None, std=None, mode: str = "per_lead"):
+        if mode not in self.MODES:
+            raise ValueError(f"mode must be one of {self.MODES}, got {mode!r}")
+        self.mean, self.std, self.mode = mean, std, mode
 
     def fit(self, x: np.ndarray) -> "Standardizer":
-        self.mean = x.mean(axis=(0, 2), dtype=np.float64).astype(np.float32)
-        self.std = x.std(axis=(0, 2), dtype=np.float64).astype(np.float32)
+        if self.mode == "per_lead":
+            self.mean = x.mean(axis=(0, 2), dtype=np.float64).astype(np.float32)
+            self.std = x.std(axis=(0, 2), dtype=np.float64).astype(np.float32)
+        else:
+            n_leads = x.shape[1]
+            self.mean = np.full(n_leads, x.mean(dtype=np.float64), dtype=np.float32)
+            self.std = np.full(n_leads, x.std(dtype=np.float64), dtype=np.float32)
         return self
 
     def transform(self, x: np.ndarray) -> np.ndarray:

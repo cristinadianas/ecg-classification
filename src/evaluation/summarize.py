@@ -29,12 +29,18 @@ def collect_runs(exp_dir: Path) -> pd.DataFrame:
         row = {k: cfg.get(k) for k in CONFIG_COLS}
         for split in ("val", "test"):
             row.update({f"{split}_{k}": v for k, v in m[split].items()})
+        # last-epoch checkpoint, if evaluated (evaluate --checkpoint last): last_test_* etc.
+        if (run_dir / "metrics_last.json").exists():
+            ml = json.loads((run_dir / "metrics_last.json").read_text())
+            for split in ("val", "test"):
+                row.update({f"last_{split}_{k}": v for k, v in ml[split].items()})
         rows.append(row)
     return pd.DataFrame(rows)
 
 
 def summarize(runs: pd.DataFrame) -> pd.DataFrame:
-    metric_cols = [c for c in runs.columns if c.startswith(("val_", "test_"))] + ["best_epoch"]
+    metric_cols = [c for c in runs.columns
+                   if c.startswith(("val_", "test_", "last_val_", "last_test_"))] + ["best_epoch"]
     g = runs.groupby("variant", sort=False)
     agg = g[metric_cols].agg(["mean", "std"])
     agg.columns = [f"{c}_{s}" for c, s in agg.columns]
@@ -57,7 +63,8 @@ def to_markdown(summary: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
-def write_summary(exp: str) -> pd.DataFrame | None:
+def write_summary(exp: str, show: bool = True) -> pd.DataFrame | None:
+    """show=False writes the files without printing the (test) table."""
     exp_dir = RUNS_DIR / exp
     runs = collect_runs(exp_dir)
     if runs.empty:
@@ -70,7 +77,8 @@ def write_summary(exp: str) -> pd.DataFrame | None:
     (exp_dir / "summary.md").write_text(
         f"# {exp}\n\nTest set = fold 10, checkpoint = best validation macro AUC. "
         f"Mean ± std over seeds.\n\n{md}\n", encoding="utf-8")
-    print(md)
+    if show:
+        print(md)
     return summary
 
 

@@ -52,9 +52,11 @@ STANDARD = {
     # optimisation
     "epochs": 50,               # fixed for every run; no early stopping
     "batch_size": 128,
+    "standardize": "per_lead",  # z-scoring with train-fold statistics ("global" = benchmark)
     "optimizer": "adamw",
     "lr": 1e-3,                 # peak learning rate of the one-cycle schedule
     "weight_decay": 1e-2,
+    "adam_beta2": 0.999,        # beta1 is cycled 0.95 -> 0.85 -> 0.95 by the one-cycle schedule
     "scheduler": "onecycle",    # linear warm-up for 30% of steps, then cosine decay
     "pct_start": 0.3,
     "loss": "bce",              # BCEWithLogits on the 5 sigmoid outputs (multi-label)

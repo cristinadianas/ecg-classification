@@ -1,0 +1,712 @@
+\documentclass{article}
+\PassOptionsToPackage{numbers,compress}{natbib}
+\usepackage[preprint]{neurips_2026}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{adjustbox}
+\usepackage{etoolbox}
+% every chapter (section) starts on a new page, with its heading at the top of that page
+\pretocmd{\section}{\clearpage\suppressfloats[t]}{}{}
+\hypersetup{colorlinks=true,allcolors=blue,pdftitle={ECG Classification Using the PTB-XL Dataset: Intermediate Report},pdfauthor={Nedelcu Radu-Ioan; Sava Antonia-Georgia; Savin Cristina-Diana}}
+\graphicspath{{figures/intermediate_report/}}
+\captionsetup{font=small}
+
+\newcommand{\wang}{\texttt{resnet1d\_wang}}
+\newcommand{\fcnwang}{\texttt{fcn\_wang}}
+\newcommand{\pmstd}[2]{#1\,{\scriptsize$\pm$\,#2}}
+\newcommand{\best}[1]{\textbf{#1}}
+\makeatletter\renewcommand{\@notice}{}\makeatother  % no "Preprint." footer
+
+\title{ECG Classification Using the PTB-XL Dataset\\[2pt]\large Intermediate Report}
+\author{%
+  Nedelcu Radu-Ioan\\
+  \texttt{radu\_ioan.nedelcu@stud.acs.upb.ro}\\[4pt]
+  \textbf{Sava Antonia-Georgia}\\
+  \texttt{antonia.sava@stud.acs.upb.ro}\\[4pt]
+  \textbf{Savin Cristina-Diana}\\
+  \texttt{cristina.savin1801@stud.acs.upb.ro}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study the multi-label classification of 10-second, 12-lead electrocardiograms (ECGs) from the PTB-XL dataset into five diagnostic superclasses. This intermediate report extends the exploratory analysis of the dataset with a review of the relevant state of the art, a description of the architectures under study, the baseline experimental setup and the first experimental results. The best single model of the PTB-XL benchmark, \wang{}, is reproduced in an independent implementation with a test macro AUROC of $0.9299\pm0.0010$, compared with the published $0.930$. Two further baselines are established: a fully convolutional network ($0.919$) and support vector machines on hand-crafted features ($0.903$) and on the raw waveform ($0.749$). The first experiments indicate that increasing the depth of a 1D ResNet yields no measurable improvement, that random 2.5\,s cropping is by far the most effective augmentation ($+0.016$), that convolution, recurrence and self-attention perform within $0.0012$ of one another under equal design effort, and that the omission of the six precordial leads reduces macro AUROC by $0.033$. Performance is markedly lower for patients aged 80 years or older and lower for women than for men.
+\end{abstract}
+
+% =====================================================================================
+\section{Introduction}
+
+The electrocardiogram is among the most frequently performed diagnostic examinations in clinical medicine: it is non-invasive, inexpensive and acquired within seconds, yet its interpretation requires considerable expertise. Automatic interpretation can support clinicians, particularly in settings where cardiologists are not readily available, and has consequently become a standard application of deep learning to physiological signals \citep{hannun2019,ribeiro2020,strodthoff2021}.
+
+The task considered in this project is defined as follows. Given a single 10-second, 12-lead ECG sampled at 100\,Hz, i.e.\ a $12\times1000$ matrix, the model must estimate for each of the five diagnostic superclasses of PTB-XL \citep{wagner2020} whether it is present: \textbf{NORM} (normal ECG), \textbf{MI} (myocardial infarction), \textbf{STTC} (ST/T change), \textbf{CD} (conduction disturbance) and \textbf{HYP} (hypertrophy). Since a recording may carry several superclasses simultaneously, the task is a multi-label problem: every model has five sigmoid outputs and is trained with the binary cross-entropy loss.
+
+The objective of the project is to determine which architecture is best suited to ECG classification and which design choices determine its performance. The research questions are listed in Table~\ref{tab:questions}. Each experiment varies a single factor, while all remaining settings follow one fixed training protocol (Section~\ref{sec:setup}); this design permits differences in performance to be attributed to the factor under study.
+
+\begin{table}[h]
+  \caption{Research questions of the project.}
+  \label{tab:questions}
+  \centering\small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{lll}
+    \toprule
+    ID & Research question & Variants compared \\
+    \midrule
+    B0 & Can a published benchmark result be reproduced? & \wang{}, FCN, SVM (three inputs) \\
+    E1 & Does depth improve a 1D ResNet? & ResNet1D-10 vs -18 vs -34 \\
+    E2 & Which operation type suits the ECG? & convolution vs BiLSTM vs CNN + Transformer \\
+    E3 & Which data augmentations are beneficial? & none, noise, wander, scaling, shift, crop \\
+    E4 & How many leads are required? & 12 leads vs 6 limb leads vs lead II \\
+    E5 & Does a higher sampling rate help? & 100\,Hz vs 500\,Hz \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The contributions of this report are threefold: (i) a reproduction of the published PTB-XL benchmark result for \wang{} in an independent PyTorch implementation, which validates the data pipeline and the evaluation code; (ii) three baselines of decreasing complexity, namely a residual network, a fully convolutional network and a support vector machine, evaluated with seed variation, bootstrap confidence intervals and an analysis by patient age and sex; and (iii) first results for the research questions E1--E4. Sections~\ref{sec:data} and~\ref{sec:eda} are carried over from the initial report and updated to the dataset version used for all experiments.
+
+% =====================================================================================
+\section{Dataset overview and data collection}
+\label{sec:data}
+
+PTB-XL was obtained from PhysioNet, an open-access repository of physiological and clinical data \citep{wagner2020}. Each recording contains a 10-second, 12-lead ECG signal, which provides measurements of the electrical activity of the heart from different spatial perspectives \citep{wagner2020}. We use version~1.0.1, which contains 21,837 recordings from 18,885 patients and is the version used in the benchmark of Strodthoff et al.\ \citep{strodthoff2021}; the later version~1.0.3 removes duplicate records and contains 21,799 recordings from 18,869 patients. The dataset description dates the collection to the period from October 1989 to June 1996, whereas the recording dates in the metadata of version~1.0.1 span the years 1984--2001.
+
+The dataset provides two versions of every waveform: a 500\,Hz version with higher temporal resolution and a downsampled 100\,Hz version that requires less computation. Both contain the standard 12 leads: I, II, III, aVR, aVL, aVF and V1--V6. A 10-second recording sampled at 100\,Hz contains 1,000 samples per lead, which results in a signal matrix of $1{,}000\times12$ values.
+
+The diagnostic annotations were derived from clinical ECG reports and standardized according to the SCP-ECG annotation scheme. Each recording could be annotated by up to two cardiologists; not every report was, however, interpreted independently by two physicians, and some reports were initially generated automatically by the ECG device. Personal identifiers and recording-site information were pseudonymized prior to public release \citep{wagner2020}. Following the benchmark, every diagnostic SCP statement is mapped to its superclass irrespective of its likelihood; the 407 recordings (1.9\%) without any superclass are excluded from training and evaluation.
+
+% =====================================================================================
+\section{Exploratory data analysis}
+\label{sec:eda}
+
+\subsection{Distribution of diagnostic categories}
+
+NORM is the most frequently represented category, with 9,528 recordings (43.6\%), followed by MI with 5,486 (25.1\%), STTC with 5,250 (24.0\%) and CD with 4,907 (22.5\%). HYP is the least frequent category, with 2,655 recordings (12.2\%); NORM is thus 3.6 times as frequent as HYP (Figure~\ref{fig:labels}a). The percentages do not sum to 100\% because PTB-XL is a multi-label dataset: 75\% of the recordings carry one superclass, 19\% two, 4\% three and 0.7\% four (Figure~\ref{fig:labels}b). The categories must therefore not be interpreted as mutually exclusive groups.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{fig01_label_structure.png}
+  \caption{Label structure of PTB-XL v1.0.1. (a) Recordings per superclass; the dark segment corresponds to recordings without any other superclass. (b) Number of superclasses per recording. (c) Proportion of the recordings with the row superclass that also carry the column superclass. The matrix describes the co-occurrence of labels and is not a confusion matrix of a classifier.}
+  \label{fig:labels}
+\end{figure}
+
+The overlap between categories is far from uniform (Figure~\ref{fig:labels}c). Whereas 95\% of the NORM recordings carry no other superclass, this holds for only 46\% of the MI and STTC recordings, 35\% of the CD recordings and 20\% of the HYP recordings. MI and CD co-occur in 1,801 recordings, STTC and HYP in 1,514, and STTC and MI in 1,345. In particular, 57\% of the HYP recordings also carry STTC, predominantly through the subclass pair of ischaemic ST/T changes and left ventricular hypertrophy (1,172 recordings). The rarest class is therefore also the class that least frequently occurs in isolation.
+
+\subsection{Age distribution of patients}
+
+The age distribution was examined on the level of unique patients rather than recordings (Figure~\ref{fig:age}a). The dataset predominantly comprises middle-aged and older adults, with a median age of 62 years. The largest age group is 60--69 years with 4,463 patients, followed by 50--59 years (3,814) and 70--79 years (3,508). Younger age groups are considerably less represented, with 14 patients aged 0--9 years and 447 aged 10--19 years.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{age_distribution.png}
+  \caption{(a) Unique patients per ten-year age group (age at the first recording; 82 patients without recorded age are omitted). (b) Proportion of the labelled recordings that carry each superclass, per age group.}
+  \label{fig:age}
+\end{figure}
+
+Age and diagnosis are strongly associated (Figure~\ref{fig:age}b): 81\% of the recordings of patients younger than 40 years are normal, compared with 18\% for patients aged 80 years or older, among whom MI, STTC and CD each occur in 37--40\% of the recordings. A classifier may therefore partly exploit age-related signal characteristics, and its performance can be expected to differ between age groups; this is examined in Section~\ref{sec:subgroups}.
+
+A further detail concerns anonymization. In version~1.0.3 of PTB-XL, ages above 89 years are encoded as 300, a privacy-protection placeholder rather than a literal age, which must be mapped to an open-ended 90+ category. Version~1.0.1, used here, still reports these ages directly (up to 95 years). This illustrates that implausible values in medical datasets should be checked against the dataset documentation before they are treated as data errors.
+
+\subsection{ECG signals at different sampling frequencies}
+
+Both waveform versions display the same sequence of cardiac cycles, but the 500\,Hz version contains five times as many samples and preserves finer temporal detail (Figure~\ref{fig:fs}). At 100\,Hz, consecutive samples are 10\,ms apart; the narrow QRS complex is consequently represented by only a few samples, and its peak amplitude may be underestimated, whereas the slower P and T waves are represented adequately. All experiments reported here use the 100\,Hz version; whether the 500\,Hz version improves classification is addressed by research question E5.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{sampling_rates.png}
+  \caption{Lead I of the same recording. (a) The full 10\,s at 500\,Hz; the shaded interval is enlarged in (b), where the 100\,Hz samples (dots) are superimposed on the 500\,Hz signal.}
+  \label{fig:fs}
+\end{figure}
+
+\subsection{Visualization of all 12 ECG leads}
+
+Figure~\ref{fig:12lead} shows all 12 leads of a normal recording over the full 10 seconds. The leads differ in waveform shape, amplitude and polarity because they measure the electrical activity of the heart along different directions: the QRS complex is predominantly positive in leads I, II and V3--V6 and negative in aVR and V1--V2. The leads therefore provide complementary views of the same cardiac activity. They are, however, not independent: the limb leads III, aVR, aVL and aVF are linear combinations of leads I and II (Einthoven's and Goldberger's equations), which the data reproduce with a median relative error below 0.6\%. The six limb leads thus contain only two independent signals, which is relevant for the interpretation of the lead-reduction experiment E4. The precordial leads exhibit larger amplitudes than the limb leads (median per-recording standard deviation of 0.16--0.25\,mV compared with 0.10--0.13\,mV), which motivates a separate standardization of every lead.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{ecg_12leads.png}
+  \caption{All 12 leads of a normal recording at 100\,Hz over the full 10\,s. (a) Limb leads; (b) precordial leads. All panels share one amplitude scale.}
+  \label{fig:12lead}
+\end{figure}
+
+% =====================================================================================
+\section{State of the art and positioning}
+\label{sec:sota}
+
+\paragraph{The PTB-XL benchmark.} The principal reference for this work is the benchmark of Strodthoff et al.\ \citep{strodthoff2021}, which defines the evaluation protocol adopted here: the patient-disjoint, label-stratified folds of PTB-XL (training on folds 1--8, validation on fold~9, testing on fold~10), the aggregation of diagnostic statements into superclasses, and macro AUROC as the primary metric. For the superclass task, the deep learning models of the benchmark lie within 0.01 macro AUROC of one another (Table~\ref{tab:benchmark}), with convolutional models ranked marginally above recurrent ones. All networks are trained on random 2.5\,s crops of the recordings and evaluated by aggregating predictions over sliding windows. The best single model, \wang{}, is the 1D residual network of Wang et al.\ \citep{wang2017}; \fcnwang{} is the fully convolutional network from the same work. A model based on wavelet features and a shallow neural network (Wavelet+NN) represents the classical feature-based approach and lies approximately 0.05 below the deep models. An ensemble of all models reaches 0.934.
+
+\begin{table}[htb]
+  \caption{Selected results of the PTB-XL benchmark for the diagnostic superclasses on test fold 10 \citep{strodthoff2021}. Best value per column in bold.}
+  \label{tab:benchmark}
+  \centering\small
+  \begin{tabular}{lll}
+    \toprule
+    Model & Type & Macro AUROC \\
+    \midrule
+    \wang{} & 1D ResNet & \textbf{0.930} \\
+    \texttt{xresnet1d101} & Deep 1D ResNet & 0.928 \\
+    \texttt{lstm} & Recurrent & 0.927 \\
+    \fcnwang{} & Fully convolutional & 0.925 \\
+    \texttt{inception1d} & 1D Inception & 0.921 \\
+    \texttt{lstm\_bidir} & Bidirectional recurrent & 0.921 \\
+    Wavelet+NN & Hand-crafted features + MLP & 0.874 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Deep learning for ECG analysis beyond PTB-XL.} Hannun et al.\ \citep{hannun2019} demonstrated that a 34-layer convolutional network trained on single-lead ambulatory ECGs classifies cardiac rhythms at the level of cardiologists. Ribeiro et al.\ \citep{ribeiro2020} trained a residual network on more than two million 12-lead ECGs, which outperformed medical residents in the recognition of six abnormalities. More recent work pre-trains networks on unlabelled ECGs with self-supervised objectives before fine-tuning on PTB-XL \citep{mehari2022}. Across these studies, one-dimensional convolutional networks with residual connections constitute the established architecture, which motivates the choice of our starting points.
+
+\paragraph{Adopted elements and positioning.} From the benchmark we adopt the data split, the label definition, the evaluation metric, the two initial architectures (\wang{} and \fcnwang{}) and the random-crop training procedure. The aim of this work is not to exceed the best published macro AUROC of 0.930. Instead, the reproduced benchmark serves as a validated reference point, and design choices are compared under one fixed protocol, with equal design effort for every model family and without ensembles. The benchmark is extended in three directions: (1) the type of operation over time, including self-attention, which the benchmark does not evaluate (E2); (2) a reduced number of leads, as encountered in wearable devices (E4); and (3) a systematic comparison of data augmentations, which the benchmark does not report beyond random cropping (E3). In addition, performance is analysed with respect to patient age and sex.
+
+% =====================================================================================
+\section{Model architectures}
+\label{sec:models}
+
+This section describes the three baselines, which were selected for their complementary roles, and the three architectures used in the research questions E1 and E2. Table~\ref{tab:models} summarizes the neural networks. Two architectural properties recur in the interpretation of the results: the \emph{receptive field}, i.e.\ the length of the input segment that determines one output feature of the last layer, and the number of time steps that remain before global pooling.
+
+\begin{table}[htb]
+  \caption{Neural network architectures. Time steps and receptive field refer to the last layer before pooling, for a 2.5\,s input window at 100\,Hz (250 samples). Parameter counts for 12 leads and 5 outputs.}
+  \label{tab:models}
+  \centering\small
+  \begin{tabular}{lllrrr}
+    \toprule
+    Model & Operation over time & Used in & Time steps & Receptive field & Params \\
+    \midrule
+    \wang{} & convolution (residual) & B0 & 63 & 37 (0.37\,s) & 0.47M \\
+    FCN & convolution & B0 & 1000$^{\ast}$ & 14 (0.14\,s) & 0.28M \\
+    ResNet1D-10 & convolution (residual) & E1--E4 & 8 & 379 (3.8\,s) & 2.8M \\
+    ResNet1D-18 & convolution (residual) & E1 & 8 & $>$ window & 6.3M \\
+    ResNet1D-34 & convolution (residual) & E1 & 8 & $>$ window & 11.9M \\
+    BiLSTM & recurrence & E2 & 250 & entire window & 0.64M \\
+    CNN + Transformer & convolution + self-attention & E2 & 63 & entire window & 0.80M \\
+    \bottomrule
+    \multicolumn{6}{l}{\footnotesize $^{\ast}$The FCN baseline is trained and evaluated on the full 10\,s recording (1,000 samples).}
+  \end{tabular}
+\end{table}
+
+\subsection{Baselines}
+
+\paragraph{\wang{}.} The best single model of the PTB-XL benchmark \citep{wang2017,strodthoff2021} consists of a stem convolution (kernel size 7, stride 1, 128 channels) followed by three residual blocks of 128 channels. Each block contains two convolutions with kernel sizes 5 and 3; the second and third blocks halve the temporal resolution. The head concatenates global max pooling and global average pooling and applies batch normalization, dropout (0.25), a linear layer of 128 units with ReLU, batch normalization, dropout (0.5) and the output layer. Residual connections \citep{he2016} allow each block to learn a correction to an identity mapping, which facilitates optimization. Since the stem does not downsample, short events such as the QRS complex are retained at full resolution in the first layer, and the concatenated pooling retains both the strongest local response, which is informative for short, localized findings, and the average response over the recording. The model was chosen because it is the best published single model, so that its reproduction validates the complete pipeline.
+
+\paragraph{Fully convolutional network (FCN).} The FCN of Wang et al.\ \citep{wang2017} consists of three blocks of convolution, batch normalization and ReLU with 128, 256 and 128 filters and kernel sizes 8, 5 and 3, without residual connections and without downsampling, followed by global average pooling and a linear output layer. Its convolutional layers correspond to \fcnwang{} of the benchmark, which however uses the head of \wang{}. With a receptive field of only 0.14\,s, the FCN computes local waveform descriptors at every time step and averages them over the recording. It serves as the simplest strong convolutional baseline and is the only network baseline trained with the standard protocol of this project.
+
+\paragraph{Support vector machine (SVM).} An SVM with a radial basis function (RBF) kernel \citep{cortes1995} serves as a classical, non-deep reference, which quantifies the benefit of learning a representation from the signal over feature engineering. Three input representations are compared (Table~\ref{tab:svminputs}). The \emph{statistical} features describe each lead by 39 values (amplitude statistics and percentiles, distribution shape, first and second differences, Hjorth parameters and power-spectrum descriptors), without beat detection (468 features in total). The \emph{ECG + wavelet} features (62 per lead, 744 in total) additionally comprise band-pass filtering, approximate R peaks and RR intervals, a median heartbeat summarized before, around and after the QRS complex, and a four-level Daubechies-4 wavelet decomposition. The \emph{raw waveform} uses all 1,000 samples of every lead (12,000 inputs).
+
+\begin{table}[htb]
+  \caption{Input representations of the SVM baseline.}
+  \label{tab:svminputs}
+  \centering\footnotesize
+  \begin{tabularx}{\linewidth}{lrrX}
+    \toprule
+    Input & Per lead & Inputs (12 leads) & Content \\
+    \midrule
+    \textbf{Statistical features} & 39 & 468 & amplitude statistics and percentiles, distribution shape, first and second differences, Hjorth parameters, Welch power-spectrum descriptors; no beat detection \\
+    \textbf{ECG + wavelet features} & 62 & 744 & the same kind of statistics after band-pass filtering, approximate R-peaks and RR intervals, a median heartbeat summarized before, around and after the QRS complex, and a 4-level Daubechies-4 wavelet decomposition \\
+    \textbf{Raw waveform} & 1,000 & 12,000 & every sample of the 10\,s record \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+
+\subsection{ResNet1D (E1--E4)}
+
+The ResNet1D family carries the residual network layout of He et al.\ \citep{he2016} over to one-dimensional signals. A stem convolution (kernel size 7, stride 2) and max pooling reduce the temporal resolution by a factor of four; four stages of basic residual blocks with 64, 128, 256 and 512 channels and kernel size 5 follow, each subsequent stage halving the temporal resolution again; global average pooling and a linear layer produce the five outputs. The three depths studied in E1 differ exclusively in the number of blocks per stage: one block (ResNet1D-10), two blocks (ResNet1D-18) and the standard configuration $[3,4,6,3]$ (ResNet1D-34). The last batch normalization of every residual branch is initialized to zero, so that every block initially computes the identity and the deeper networks start from the same function as the shallow one; this ensures that a comparison of depths is not confounded by differences in optimization. In contrast to \wang{}, the ResNet1D downsamples aggressively and has a receptive field (3.8\,s for ResNet1D-10) that exceeds the 2.5\,s input window. ResNet1D-10, the smallest member of the family, serves as the reference convolutional model for E2--E4.
+
+\subsection{Bidirectional LSTM (E2)}
+
+The recurrent model follows the recurrent architecture of the benchmark \citep{strodthoff2021}. The 12 lead values at each time step form the input vector of two stacked bidirectional LSTM layers \citep{hochreiter1997} with a hidden size of 128 per direction, which process the signal directly, without convolutions. The forward direction summarizes the signal up to a given time step and the backward direction the signal after it, so that every output depends on the entire input window. The output sequence is summarized by its temporal average, its temporal maximum and the final state of each direction; the concatenated 768-dimensional vector is classified by the same multilayer head as in \wang{} (batch normalization, dropout, a hidden layer of 128 units). The recurrence processes the 250 time steps sequentially and is therefore the least parallelizable of the three operations.
+
+\subsection{CNN + Transformer (E2)}
+
+The third model combines local convolutions with global self-attention \citep{vaswani2017}. A convolutional front-end, consisting of a stem convolution (kernel size 7, 128 channels) and two residual blocks with stride 2, converts each 2.5\,s window into a sequence of 63 tokens of dimension 128; each token describes a segment of 0.43\,s. Fixed sinusoidal position encodings are added, and a two-layer Transformer encoder with four attention heads, a feed-forward width of 512, GELU activations and layer normalization before each sub-layer (pre-norm) relates every token to all others. The tokens are pooled and classified by the same concatenated-pooling head as \wang{}. Since the front-end is shared with convolutional designs, the comparison with the ResNet isolates the effect of replacing further convolutions by self-attention.
+
+All E2 models are used in a single standard configuration of comparable size (0.6--2.8M parameters), without a dedicated architecture search for any family, so that the comparison reflects the operation type rather than unequal tuning effort.
+
+% =====================================================================================
+\section{Baseline experiment setup}
+\label{sec:setup}
+
+\paragraph{Input and output.} The input is a $12\times1000$ matrix (12 leads, 10\,s at 100\,Hz) in millivolts, standardized per lead with the mean and standard deviation of the training folds. The output is a vector of five probabilities, one sigmoid output per superclass. A superclass is predicted as present if its probability exceeds a decision threshold; results are reported both for a threshold of 0.5 and for per-class thresholds that maximize F1 on the validation fold.
+
+\paragraph{Data split.} The official split is used: folds 1--8 for training (17,111 recordings), fold~9 for validation (2,156) and fold~10 for testing (2,163). The folds are patient-disjoint, and the class prevalence varies by at most 2.6 percentage points between folds. Folds 9 and 10 contain only reports validated by a cardiologist (compared with approximately 67\% in folds 1--8), so the evaluation labels are of higher quality than the training labels.
+
+\paragraph{Training protocol.} All networks are trained with one standard protocol (Table~\ref{tab:protocol}); each experiment modifies only the factor it studies. Each network is trained on random 2.5\,s crops of the training recordings, so that every epoch presents a different segment of each recording. At evaluation time, every recording is divided into seven overlapping 2.5\,s windows (stride 1.25\,s), and the per-class maximum of the predicted probabilities is taken. Training runs for a fixed number of 50 epochs without early stopping, and the checkpoint with the highest validation macro AUROC is retained. For the reproduction of the benchmark, \wang{} is trained with the benchmark's settings where these deviate from the standard protocol: a peak learning rate of $10^{-2}$, Adam $\beta_2=0.99$, a single global mean and standard deviation for standardization, and evaluation of the final-epoch checkpoint (the best-validation checkpoint is reported in addition).
+
+\begin{table}[htb]
+  \caption{Standard training protocol. Random cropping was adopted as part of the protocol on the basis of E3; the FCN baseline, E1 and the reference condition of E3 were trained and evaluated on the full 10\,s recordings.}
+  \label{tab:protocol}
+  \centering\small
+  \begin{tabular}{ll}
+    \toprule
+    Setting & Standard protocol \\
+    \midrule
+    Input & 100\,Hz, 12 leads, standardized per lead with training statistics \\
+    Training input & random 2.5\,s crop of each recording \\
+    Evaluation & 7 overlapping 2.5\,s windows (stride 1.25\,s), per-class maximum \\
+    Loss & binary cross-entropy on 5 outputs \\
+    Optimizer & AdamW, weight decay 0.01, batch size 128 \\
+    Learning-rate schedule & one-cycle, peak $10^{-3}$, 30\% warm-up, cosine decay \\
+    Epochs & 50, fixed (no early stopping) \\
+    Checkpoint & epoch with the highest validation macro AUROC \\
+    Seeds & 0, 1, 2; mean $\pm$ standard deviation reported \\
+    Precision & bf16 mixed precision \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{SVM setup.} The SVM inputs are z-scored with training statistics. One binary SVM with balanced class weights is trained per superclass (one-vs-rest); the five classifiers share the regularization parameter $C$ and the kernel width $\gamma$, which are selected on the validation fold from $C\in\{0.25,1,4,16,64\}$ and seven values of $\gamma$ between $0.125$ and $8$ times the default scale of scikit-learn. The signed distance to the decision boundary is mapped to a probability with a sigmoid function. The kernel matrix is computed on the GPU, which renders the 12,000-dimensional raw input tractable. As the SVM is deterministic, a single run per input representation is reported.
+
+\paragraph{Evaluation metrics.} The primary metric is the macro AUROC on the test fold, i.e.\ the area under the receiver operating characteristic curve of each superclass, averaged with equal weights. It is independent of the decision threshold and of class prevalence, which makes it comparable with the benchmark. Since AUROC can appear favourable for rare classes, the macro area under the precision--recall curve (AUPRC), whose chance level equals the class prevalence (12\% for HYP), and the macro F1 score at both thresholds are reported in addition. For the networks, the mean and standard deviation over three seeds are reported; for every run, 95\% percentile bootstrap confidence intervals are computed from 1,000 resamples of the test fold. All model selection is performed on the validation fold; the test fold is used exclusively for reporting.
+
+% =====================================================================================
+\section{Baseline results and interpretation}
+\label{sec:results}
+
+The results of the three baselines are reported in Tables~\ref{tab:wang}, \ref{tab:fcn} and~\ref{tab:svm}; Figure~\ref{fig:b0test} compares their per-class test AUROC and AUPRC.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{b0_test_metrics.png}
+  \caption{Test AUROC (a) and AUPRC (b), macro-averaged and per class, of the baselines. The dotted line marks the published macro AUROC of \wang{}. The SVM on the raw waveform (macro AUROC 0.749) is omitted for readability.}
+  \label{fig:b0test}
+\end{figure}
+
+\subsection{Reproduction of \texorpdfstring{\wang{}}{resnet1d\_wang}}
+
+\begin{table}[htb]
+  \caption{Reproduction of \wang{} with the benchmark procedure, test fold, mean $\pm$ standard deviation over three seeds. The final epoch is the checkpoint of the benchmark; the best validation epoch is the selection rule of all other experiments. NORM--HYP: per-class test AUROC. Best value per column in bold.}
+  \label{tab:wang}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrrrrrrrr}
+    \toprule
+    Checkpoint & Macro AUROC & Macro AUPRC & Macro F1 @0.5 & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    Published value \citep{strodthoff2021} & 0.930 &  &  &  &  &  &  & & \\
+    Final epoch (benchmark procedure) & 0.9299\,$\pm$\,0.0010 & 0.8292\,$\pm$\,0.0034 & 0.7510\,$\pm$\,0.0032 & 0.7530\,$\pm$\,0.0057 & \textbf{0.9490} & 0.9359 & 0.9326 & 0.9263 & 0.9058 \\
+    Best validation epoch & \textbf{0.9324\,$\pm$\,0.0011} & \textbf{0.8369\,$\pm$\,0.0013} & \textbf{0.7557\,$\pm$\,0.0034} & \textbf{0.7577\,$\pm$\,0.0049} & \textbf{0.9490} & \textbf{0.9395} & \textbf{0.9346} & \textbf{0.9295} & \textbf{0.9093} \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\paragraph{Agreement with the published result.} Trained with the benchmark's settings and evaluated at the final epoch (Table~\ref{tab:wang}), \wang{} reaches a test macro AUROC of $0.9299\pm0.0010$, compared with the published value of $0.930$. The three runs lie between 0.9291 and 0.9310, and the published value lies within the 95\% bootstrap confidence interval of every run (0.922--0.938). The implementation uses PyTorch instead of the fastai library of the original code, so that implementation details such as the weight initialization differ; given the close agreement, these differences have no material effect. The reproduction thereby validates the data pipeline, the label aggregation and the evaluation code that all subsequent experiments share.
+
+\paragraph{Effect of checkpoint selection.} The validation macro AUROC reaches its maximum between epochs 32 and 35 and declines slightly thereafter, from 0.935 to 0.932 at epoch 50, while the validation loss rises from 0.278 to 0.306 (Figure~\ref{fig:b0curves}). Selecting the checkpoint with the highest validation AUROC therefore improves the test macro AUROC to $0.9324\pm0.0011$. Since the selection relies exclusively on the validation fold, the test fold remains unbiased; this selection rule is adopted in all further experiments.
+
+\paragraph{Regularizing effect of random cropping.} At the end of training, the training loss of \wang{} remains at 0.18, whereas the ResNets trained on full recordings without augmentation in E1 reach approximately 0.0005 and thus memorize the training set (Section~\ref{sec:e1}).
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{b0_curves.png}
+  \caption{Training curves of the two baseline networks, mean $\pm$ standard deviation over three seeds. (a) Validation macro AUROC; the dot marks the best epoch of the mean curve. (b) Training (dashed) and validation (solid) loss.}
+  \label{fig:b0curves}
+\end{figure}
+
+Figure~\ref{fig:rocpr} shows the per-class ROC and precision--recall curves of \wang{}. The ROC curves of all classes rise steeply, and those of NORM, MI, STTC and CD are almost indistinguishable, whereas the curve of HYP lies visibly below the others. The precision--recall curves separate the classes considerably more: NORM retains a precision above 0.85 up to a recall of 0.8, whereas the precision for HYP decreases almost linearly with increasing recall.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{b0_roc_pr.png}
+  \caption{Per-class ROC (a) and precision--recall (b) curves of \wang{} (seed 0, best validation checkpoint) on the test fold. Dotted lines in (b) mark the prevalence of each class, i.e.\ the precision of a random classifier.}
+  \label{fig:rocpr}
+\end{figure}
+
+\subsection{Fully convolutional network}
+
+\begin{table}[htb]
+  \caption{FCN baseline trained on the full 10\,s recordings with the standard protocol, compared with the published \fcnwang{}; test fold, mean $\pm$ standard deviation over three seeds. Best value per column in bold.}
+  \label{tab:fcn}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrrrrrrrrr}
+    \toprule
+    Model & Params & Macro AUROC & Macro AUPRC & Macro F1 @0.5 & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    FCN (B0) & 0.28M & 0.9192\,$\pm$\,0.0013 & 0.8065\,$\pm$\,0.0012 & 0.7231\,$\pm$\,0.0055 & 0.7368\,$\pm$\,0.0035 & 0.9395 & 0.9232 & 0.9322 & 0.9063 & 0.8947 \\
+    \texttt{fcn\_wang}, benchmark \citep{strodthoff2021} & -- & \textbf{0.925} & -- & -- & -- & -- & -- & -- & -- & -- \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\paragraph{Comparison with the published value.} As shown in Table~\ref{tab:fcn}, the FCN reaches $0.9192\pm0.0013$, i.e.\ 0.006 below the 0.925 reported for \fcnwang{}. The most likely cause is the difference in the training input: the FCN baseline was trained on the full recordings, whereas the benchmark uses random crops, which alone improve ResNet1D-10 by 0.016 in E3. The three seeds yield 0.9184, 0.9185 and 0.9206, and repeating a run with the same seed reproduces its result exactly.
+
+\paragraph{Absence of overfitting.} The best validation epoch lies between 32 and 37, the validation loss remains at approximately 0.29 until the end of training, and the training loss decreases only to 0.19 (Figure~\ref{fig:b0curves}b). With 0.28M parameters and a receptive field of 0.14\,s, the network is unable to memorize the training set. Notably, the FCN outperforms all three ResNets of E1 (0.912--0.913), which were trained on the same full recordings with 10 to 42 times more parameters. This observation indicates that performance on PTB-XL is limited by generalization rather than by model capacity, and that local waveform descriptors of 0.14\,s, averaged over the recording, already carry most of the diagnostic information.
+
+\subsection{Support vector machine}
+
+\begin{table}[htb]
+  \caption{SVM baselines on the test fold: one deterministic run per input, with the 95\% bootstrap confidence interval of the macro AUROC; FCN: mean $\pm$ standard deviation over three seeds. Best value per column in bold.}
+  \label{tab:svm}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrrrrrrrrr}
+    \toprule
+    Model & Inputs & Macro AUROC & Macro AUPRC & Macro F1 @0.5 & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    SVM, statistical features & 468 & 0.8884 [0.880, 0.897] & 0.7419 & 0.6845 & 0.6816 & 0.9117 & 0.8561 & 0.9044 & 0.8703 & 0.8995 \\
+    SVM, ECG + wavelet features & 744 & 0.9031 [0.896, 0.911] & 0.7696 & 0.7068 & 0.7171 & 0.9232 & 0.8702 & 0.9264 & 0.8931 & \textbf{0.9027} \\
+    SVM, raw waveform & 12,000 & 0.7488 [0.737, 0.761] & 0.4874 & 0.2089 & 0.4994 & 0.7983 & 0.7102 & 0.7164 & 0.7150 & 0.8040 \\
+    FCN (Table~\ref{tab:fcn}) & -- & \textbf{0.9192\,$\pm$\,0.0013} & \textbf{0.8065} & \textbf{0.7231} & \textbf{0.7368} & \textbf{0.9395} & \textbf{0.9232} & \textbf{0.9322} & \textbf{0.9063} & 0.8947 \\
+    \texttt{Wavelet+NN}, benchmark \citep{strodthoff2021} & -- & 0.874 & -- & -- & -- & -- & -- & -- & -- & -- \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\paragraph{Learned versus hand-crafted representations.} The best SVM (Table~\ref{tab:svm}), operating on ECG + wavelet features, reaches 0.903, which is 0.016 below the FCN and 0.029 below \wang{}. In a paired bootstrap on the test fold, the advantage of the FCN amounts to 0.015--0.018 for every seed, with all 95\% confidence intervals above zero. The SVM nevertheless clearly exceeds the classical baseline of the benchmark (Wavelet+NN, 0.874).
+
+\paragraph{Contribution of ECG-specific features.} Beat-level information (R peaks, RR intervals, median heartbeat) and the wavelet decomposition increase the macro AUROC by 0.015 relative to purely statistical features (paired bootstrap 95\% confidence interval [0.010, 0.019]), with the largest gains for CD ($+0.023$), STTC ($+0.022$) and MI ($+0.014$).
+
+\paragraph{Class-dependent gap to the networks.} The gap between the SVM and the networks is largest for MI (0.870 for the SVM compared with 0.923 for the FCN and 0.940 for \wang{}), whereas for HYP the SVM performs on par with the FCN (0.903 compared with 0.895). A plausible explanation is that hypertrophy is largely defined by voltage criteria, i.e.\ amplitudes that the features measure directly, whereas myocardial infarction manifests in the morphology of specific waves (Q waves, ST segment) in specific leads, which summary statistics capture only partially.
+
+\paragraph{Failure on the raw waveform.} With the raw samples as input, the macro AUROC decreases to 0.749. The RBF kernel compares two recordings sample by sample, so that the same heartbeat shifted by a fraction of a second appears dissimilar. Almost every training recording becomes a support vector (11,380--16,850 of 17,111 per class, compared with 6,031--8,555 for the wavelet features), i.e.\ the model memorizes the training set instead of learning a decision rule. A suitable representation is therefore indispensable, either in the form of hand-crafted features or of the learned, shift-equivariant filters of a convolutional network.
+
+\paragraph{Difficulty of the minority class.} Whereas the per-class AUROC of all networks lies between 0.89 and 0.95, the AUPRC for HYP amounts to only 0.66--0.69, compared with 0.91--0.93 for NORM (Figure~\ref{fig:b0test}b). At a prevalence of 12\%, even a low false-positive rate among the numerous negative recordings substantially reduces precision; consequently, HYP has the lowest AUPRC for every model. Class imbalance is therefore not apparent from AUROC alone and is addressed in the next stage of the project.
+
+\subsection{Performance by age and sex}
+\label{sec:subgroups}
+
+The test metrics of the FCN were recomputed separately for four age groups and for both sexes (Tables~\ref{tab:age} and~\ref{tab:sex}, Figure~\ref{fig:subgroups}).
+
+\begin{table}[htb]
+  \caption{Test macro AUROC by age group: FCN baseline (mean $\pm$ standard deviation over three seeds, 95\% bootstrap confidence interval) and ResNet1D-18 and ResNet1D-34 of E1 (mean over three seeds). n: test recordings per group; 15 recordings without age are omitted. Best value per column in bold.}
+  \label{tab:age}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrrcrr}
+    \toprule
+    Age & n & \% NORM & FCN (B0) & 95\% CI & ResNet1D-18 & ResNet1D-34 \\
+    \midrule
+    $<$40 & 284 & 83.1 & \textbf{0.9225\,$\pm$\,0.0054} & [0.890, 0.949] & 0.8988 & 0.9033 \\
+    40--59 & 642 & 60.4 & 0.9159\,$\pm$\,0.0019 & [0.899, 0.931] & \textbf{0.9076} & \textbf{0.9070} \\
+    60--79 & 916 & 34.8 & 0.9099\,$\pm$\,0.0011 & [0.899, 0.921] & 0.9031 & 0.9042 \\
+    80+ & 306 & 6.9 & 0.8734\,$\pm$\,0.0010 & [0.848, 0.895] & 0.8679 & 0.8652 \\
+    all & 2163 & 44.6 & 0.9192\,$\pm$\,0.0013 & [0.912, 0.926] & 0.9127 & 0.9131 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[htb]
+  \caption{Test macro AUROC of the FCN baseline by sex: mean $\pm$ standard deviation over three seeds, 95\% bootstrap confidence interval; NORM--HYP: per-class test AUROC. Best value per column in bold.}
+  \label{tab:sex}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrccccccc}
+    \toprule
+    Sex & n & \% NORM & FCN (B0) & 95\% CI & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    male & 1,115 & 46.4 & \textbf{0.9305\,$\pm$\,0.0008} & [0.921, 0.939] & \textbf{0.945} & \textbf{0.938} & \textbf{0.944} & \textbf{0.919} & \textbf{0.906} \\
+    female & 1,048 & 42.7 & 0.9071\,$\pm$\,0.0029 & [0.895, 0.919] & 0.934 & 0.905 & 0.919 & 0.894 & 0.884 \\
+    all & 2,163 & 44.6 & 0.9192\,$\pm$\,0.0013 & [0.912, 0.926] & 0.940 & 0.923 & 0.932 & 0.906 & 0.895 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{b0_subgroups.png}
+  \caption{FCN baseline on the test fold by patient group (mean over three seeds). (a, b) Macro AUROC with 95\% bootstrap confidence intervals; the dashed line corresponds to the whole test fold. (c) Per-class AUROC by age group; MI below 40 years (7 positive recordings) is omitted.}
+  \label{fig:subgroups}
+\end{figure}
+
+\paragraph{Patients aged 80 years or older.} Macro AUROC decreases from 0.923 (below 40 years) to 0.873 (80 years or older), and the 95\% confidence interval of the oldest group, [0.848, 0.895], does not overlap with that of the whole test fold, [0.912, 0.926]. ResNet1D-18 and ResNet1D-34 of E1 exhibit the same pattern (0.868 and 0.865 for this group). Only 6.9\% of the recordings in this group are normal, and most carry several superclasses simultaneously (MI 46.7\%, STTC 42.8\%, CD 42.2\%); the classifier must therefore distinguish co-occurring pathologies from one another rather than from normal recordings. HYP is affected most strongly, with an AUROC of 0.818.
+
+\paragraph{Patients younger than 40 years.} For this group, the macro AUROC is high but uncertain (confidence interval [0.890, 0.949]), since the group contains few abnormal recordings (e.g.\ seven with MI). The NORM class displays a trend opposite to that of the other classes: its AUROC is lowest below 40 years (0.853), where abnormal recordings are rare and frequently subtle (mostly CD), and highest at 60--79 years (0.932).
+
+\paragraph{Differences between sexes.} The macro AUROC amounts to 0.931 [0.921, 0.939] for men and 0.907 [0.895, 0.919] for women, with the largest differences for MI (0.938 vs.\ 0.905) and STTC (0.944 vs.\ 0.919). The class composition of both groups is similar (e.g.\ 46\% vs.\ 43\% NORM), so the difference cannot be attributed to prevalence alone; sex-related differences in ECG amplitudes and in the manifestation of ischaemic changes are plausible contributing factors.
+
+\subsection{Qualitative examples}
+
+Figure~\ref{fig:qualitative} presents four test recordings together with the probabilities predicted by \wang{}. Correct predictions are typically made with high confidence, as for the normal recording (a) and for the recording with myocardial infarction and first-degree atrioventricular block (b), in which both labels receive probabilities close to 1 while the absent classes remain low; the model thus handles multi-label cases without being forced to select a single class. The two errors are instructive. Recording (c) is labelled HYP on the basis of right ventricular hypertrophy, a subclass with only 126 recordings, compared with 2,137 for left ventricular hypertrophy; its negative T waves in numerous leads resemble ischaemic changes, and the model predicts MI instead. Recording (d) is labelled NORM, although its report describes an abnormal QRS complex and states that inferior myocardial damage cannot be excluded; the predicted MI therefore reflects an ambiguity of the reference label rather than an unequivocal model error. Such borderline cases impose an upper bound on the attainable performance.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{qualitative.png}
+  \caption{Four test recordings (lead II, 10\,s) with the probabilities predicted by \wang{} (seed 0, best validation checkpoint). Bold class names denote the reference labels; vertical marks denote the per-class thresholds tuned on validation. (a, b) Correct predictions, including a multi-label case; (c) a missed hypertrophy; (d) a false-positive MI prediction.}
+  \label{fig:qualitative}
+\end{figure}
+
+% =====================================================================================
+\section{Experimental results}
+\label{sec:experiments}
+
+The research questions E1--E4 are reported in their numerical order; each subsection presents a table of test-fold results (mean over three seeds), a figure of the training dynamics and an interpretation. Although E2 precedes E3, it already uses random cropping, which E3 identified as the most effective augmentation.
+
+
+\subsection{E1: Effect of depth}
+\label{sec:e1}
+
+\begin{table}[htb]
+  \caption{E1: ResNet1D of three depths trained on the full recordings without augmentation; test fold, mean $\pm$ standard deviation over three seeds; training time for 50 epochs on an RTX 5080. NORM--HYP: per-class test AUROC. Best value per column in bold.}
+  \label{tab:e1}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrrrrrrrrrr}
+    \toprule
+    Model & Params & Train time & Macro AUROC & Macro AUPRC & Macro F1 @0.5 & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    ResNet1D-10 & 2.8M & 33\,s & 0.9121\,$\pm$\,0.0007 & 0.7960\,$\pm$\,0.0016 & 0.6996\,$\pm$\,0.0231 & 0.7232\,$\pm$\,0.0045 & 0.9350 & 0.9020 & 0.9270 & 0.9010 & \textbf{0.8952} \\
+    ResNet1D-18 & 6.3M & 53\,s & 0.9127\,$\pm$\,0.0017 & \textbf{0.7978\,$\pm$\,0.0036} & \textbf{0.7049\,$\pm$\,0.0160} & \textbf{0.7255\,$\pm$\,0.0066} & 0.9356 & \textbf{0.9049} & \textbf{0.9283} & 0.8995 & 0.8951 \\
+    ResNet1D-34 & 11.9M & 94\,s & \textbf{0.9131\,$\pm$\,0.0017} & 0.7973\,$\pm$\,0.0040 & 0.6926\,$\pm$\,0.0098 & 0.7239\,$\pm$\,0.0053 & \textbf{0.9368} & 0.9044 & 0.9264 & \textbf{0.9036} & 0.8942 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\paragraph{Performance.} The macro AUROC increases only negligibly with depth (Table~\ref{tab:e1}: 0.9121, 0.9127 and 0.9131 for ResNet1D-10, -18 and -34). The total range of 0.0010 is smaller than the standard deviation across seeds of the two deeper models and lies well within the 95\% bootstrap confidence interval of every individual run (approximately $\pm0.0075$). The per-class AUROC values overlap for all five superclasses. ResNet1D-34, however, requires 4.2 times as many parameters and 2.8 times the training time of ResNet1D-10 (94\,s compared with 33\,s for 50 epochs). Within the examined range, depth thus increases the computational cost without a measurable benefit, and ResNet1D-10 is adopted as the reference model for the subsequent experiments.
+
+\paragraph{Training dynamics.} All three networks reach their highest validation AUROC as early as epochs 8--11 (Figure~\ref{fig:e1}a). Thereafter, the training loss decreases by three orders of magnitude, to approximately 0.0005, while the validation loss rises from 0.31 to 0.77--0.84 (Figure~\ref{fig:e1}b): the networks memorize the training set. The validation AUROC declines accordingly, exhibits a transient minimum around epoch 25, when the learning rate of the one-cycle schedule is still high, and stabilizes at approximately 0.903. Since even the smallest network memorizes the training set, generalization is limited by insufficient regularization rather than by capacity, in agreement with the FCN result. This observation motivates the augmentation study E3.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{e1_depth.png}
+  \caption{E1: ResNet1D of three depths trained on the full recordings without augmentation (mean $\pm$ standard deviation over three seeds). (a) Validation macro AUROC; dots mark the best epoch. (b) Training (dashed) and validation (solid) loss on a logarithmic scale.}
+  \label{fig:e1}
+\end{figure}
+
+\subsection{E2: Effect of the operation type}
+
+\begin{table}[htb]
+  \caption{E2: one standard configuration per operation type (BiLSTM: hidden size 128; CNN + Transformer: width 128, two encoder layers), trained with the standard protocol and random cropping. Test fold unless stated, mean $\pm$ standard deviation over three seeds; training time for 50 epochs on an RTX 5080. NORM--HYP: per-class test AUROC. Best value per column in bold.}
+  \label{tab:e2}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lllrcccccccccc}
+    \toprule
+    Operation & Model & Params & Train time & Val macro AUROC & Test macro AUROC & Macro AUPRC & Macro F1 @0.5 & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    Convolution & ResNet1D-10 & 2.81M & 31\,s & \textbf{0.9314\,$\pm$\,0.0010} & \textbf{0.9280\,$\pm$\,0.0015} & 0.8216 & 0.7453 & 0.7491 & 0.9445 & 0.9321 & \textbf{0.9343} & 0.9223 & \textbf{0.9069} \\
+    Recurrence & BiLSTM & 0.64M & 49\,s & 0.9308\,$\pm$\,0.0014 & 0.9277\,$\pm$\,0.0012 & \textbf{0.8240} & \textbf{0.7483} & \textbf{0.7529} & 0.9468 & \textbf{0.9346} & 0.9338 & 0.9209 & 0.9022 \\
+    Self-attention & CNN + Transformer & 0.80M & 49\,s & 0.9313\,$\pm$\,0.0003 & 0.9268\,$\pm$\,0.0013 & 0.8180 & 0.7423 & 0.7479 & \textbf{0.9470} & 0.9318 & 0.9323 & \textbf{0.9237} & 0.8990 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[htb]
+  \caption{E2: validation loss (BCE) at its minimum and at the end of training (mean over three seeds). Best value per column in bold.}
+  \label{tab:e2loss}
+  \centering\small
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lcc}
+    \toprule
+    Model & Lowest validation loss & At epoch 50 \\
+    \midrule
+    ResNet1D-10 & 0.296 & 0.327 \\
+    BiLSTM & \textbf{0.290} & \textbf{0.304} \\
+    CNN + Transformer & 0.302 & 0.330 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\paragraph{Performance.} Under equal design effort and with random cropping (Table~\ref{tab:e2}), convolution (0.9280), recurrence (0.9277) and self-attention (0.9268) lie within 0.0012 macro AUROC of one another, a difference smaller than the standard deviation across seeds (0.0012--0.0015). The validation results (0.9308--0.9314) agree with this finding. The per-class results do not reveal a consistently superior family either (Figure~\ref{fig:e2}b): the BiLSTM is marginally ahead for MI, the CNN + Transformer for CD, and the ResNet for HYP, with differences of at most 0.008. The ranking is consistent with the benchmark, in which convolutional models are likewise only marginally ahead of recurrent ones. A control run of the BiLSTM with the recurrence computed in single instead of half precision yielded the same validation AUROC (0.9310 compared with 0.9308).
+
+\paragraph{Interpretation.} The CNN + Transformer uses a convolutional front-end and then relates all positions of the 2.5\,s window to each other through self-attention; the BiLSTM integrates information over the whole window by recurrence. That neither model improves on the ResNet indicates that global interactions within a window add little information beyond local waveform morphology. This is consistent with the receptive fields in Table~\ref{tab:models}: the FCN and \wang{}, with receptive fields of 0.14\,s and 0.37\,s, perform at least as well as models with access to the entire window.
+
+\paragraph{Training dynamics and cost.} All three models reach their best validation epoch between epochs 32 and 35 (Figure~\ref{fig:e2}a). Towards the end of training, the BiLSTM overfits least (Table~\ref{tab:e2loss}; validation loss rising from 0.290 to 0.304, training loss 0.19 at epoch 50), whereas the validation loss of the ResNet and of the CNN + Transformer increases from 0.30 to 0.33. With 31--49\,s per run, the three models are of comparable computational cost at this input length.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{e2_operation.png}
+  \caption{E2: three operation types under the standard protocol with random cropping. (a) Validation macro AUROC (mean $\pm$ standard deviation over three seeds); dots mark the best epoch. (b) Test AUROC, macro-averaged and per class.}
+  \label{fig:e2}
+\end{figure}
+
+\subsection{E3: Effect of data augmentation}
+
+\begin{table}[htb]
+  \caption{E3: augmentations. Amplitudes are given in units of the per-lead standard deviation, since augmentation is applied after standardization.}
+  \label{tab:e3aug}
+  \centering\footnotesize
+  \begin{tabularx}{\linewidth}{lX}
+    \toprule
+    Augmentation & Definition \\
+    \midrule
+    \textbf{Noise} & additive Gaussian noise, $\sigma$ $\sim$ U(0.05, 0.15) (SNR $\approx$ 16--26 dB) \\
+    \textbf{Baseline wander} & per-lead sinusoid, 0.05--0.5\,Hz, amplitude $\sim$ U(0.1, 0.5), random phase \\
+    \textbf{Scaling} & one amplitude factor per record, $\sim$ U(0.8, 1.2) \\
+    \textbf{Time shift} & circular shift of all leads by up to\,$\pm$\,1\,s \\
+    \textbf{Random crop} & random 2.5\,s window of each record (the crop length of the benchmark \citep{strodthoff2021}) \\
+    \textbf{All combined} & the five above: the first four each with its own probability 0.5, followed by the crop \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{table}[htb]
+  \caption{E3: ResNet1D-10 under seven augmentation conditions; test fold, mean $\pm$ standard deviation over three seeds; $\Delta$ relative to no augmentation. NORM--HYP: per-class test AUROC. Best value per column in bold.}
+  \label{tab:e3}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrrrrrrrrr}
+    \toprule
+    Condition & Macro AUROC & $\Delta$ & Macro AUPRC & Macro F1 @0.5 & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    None & 0.9121\,$\pm$\,0.0007 & -- & 0.7960\,$\pm$\,0.0016 & 0.6996\,$\pm$\,0.0231 & 0.7232\,$\pm$\,0.0045 & 0.9350 & 0.9020 & 0.9270 & 0.9010 & 0.8952 \\
+    Noise & 0.9130\,$\pm$\,0.0007 & +0.0009 & 0.7982\,$\pm$\,0.0010 & 0.7053\,$\pm$\,0.0223 & 0.7278\,$\pm$\,0.0032 & 0.9354 & 0.9030 & 0.9281 & 0.9032 & 0.8955 \\
+    Baseline wander & 0.9130\,$\pm$\,0.0011 & +0.0009 & 0.7976\,$\pm$\,0.0022 & 0.6991\,$\pm$\,0.0283 & 0.7277\,$\pm$\,0.0069 & 0.9352 & 0.9041 & 0.9284 & 0.9021 & 0.8954 \\
+    Scaling & 0.9115\,$\pm$\,0.0008 & $-$0.0006 & 0.7945\,$\pm$\,0.0020 & 0.6825\,$\pm$\,0.0159 & 0.7219\,$\pm$\,0.0017 & 0.9337 & 0.8997 & 0.9272 & 0.9019 & 0.8948 \\
+    Time shift & 0.9201\,$\pm$\,0.0021 & +0.0080 & 0.8097\,$\pm$\,0.0042 & 0.7178\,$\pm$\,0.0032 & 0.7380\,$\pm$\,0.0051 & 0.9413 & 0.9140 & 0.9290 & 0.9116 & 0.9046 \\
+    Random crop & \textbf{0.9280\,$\pm$\,0.0015} & \textbf{+0.0159} & 0.8216\,$\pm$\,0.0047 & \textbf{0.7453\,$\pm$\,0.0028} & \textbf{0.7491\,$\pm$\,0.0006} & 0.9445 & 0.9321 & 0.9343 & 0.9223 & \textbf{0.9069} \\
+    All combined & 0.9279\,$\pm$\,0.0010 & +0.0158 & \textbf{0.8232\,$\pm$\,0.0057} & 0.7430\,$\pm$\,0.0027 & 0.7465\,$\pm$\,0.0035 & \textbf{0.9449} & \textbf{0.9332} & \textbf{0.9355} & \textbf{0.9252} & 0.9006 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+ResNet1D-10 was trained under seven conditions: without augmentation, with each of the five augmentations of Table~\ref{tab:e3aug} alone, and with all five combined. Noise, baseline wander, scaling and time shift are applied independently to each training recording with probability 0.5; random cropping is applied to every training recording, after the other augmentations. Validation and test data are never augmented. The strengths were fixed by visual inspection of augmented recordings, not by validation performance.
+
+\paragraph{Random cropping.} Random cropping yields by far the largest improvement, from 0.9121 to 0.9280 ($+0.016$), twice the improvement achieved by time shift (Table~\ref{tab:e3}, Figure~\ref{fig:e3}b). All three random-crop runs (0.9265--0.9294) exceed all three time-shift runs (0.9177--0.9215), which in turn exceed all three runs without augmentation (0.9113--0.9126). The improvement is consistent across metrics (macro AUPRC $+0.026$) and across all five superclasses, with the largest gains for MI ($+0.030$) and CD ($+0.021$). Random cropping also largely prevents overfitting (Figure~\ref{fig:e3}a): the best validation epoch moves from epoch 10 to epoch 33, the final training loss amounts to 0.16 instead of 0.0006, and the validation AUROC at epoch 50 (0.928) remains close to its maximum. Since every epoch presents a different segment of each recording, the network can no longer memorize individual recordings, which was identified in E1 as the factor limiting generalization. With random cropping, ResNet1D-10 approaches the published \wang{} to within 0.002; the gap observed in E1 is therefore attributable to the training procedure rather than to the architecture. It should be noted that the random-crop condition also changes the evaluation, which aggregates seven windows per recording; the present design does not separate the contribution of training on crops from that of the windowed evaluation.
+
+\paragraph{Remaining augmentations.} Time shift improves the macro AUROC by 0.008 and delays overfitting (best epoch 17) without preventing it. A plausible explanation is that strided downsampling breaks exact translation invariance and that the circular shift alters which beats lie at the boundaries of the recording, so that each shifted recording constitutes a partially new training sequence. Noise, baseline wander and scaling have no measurable effect: their differences from the reference ($+0.001$, $+0.001$ and $-0.0006$) lie within the variation across seeds, and none of them alters the course of overfitting. Augmentations that perturb only the amplitude of the signal thus do not impede the memorization of recordings, whereas augmentations that change its temporal content do. Combining all five augmentations yields no benefit beyond random cropping alone (0.9279 vs.\ 0.9280); the only per-class difference of note is a lower AUROC for HYP (0.901 vs.\ 0.907).
+
+\paragraph{Stability of threshold-dependent metrics.} Without temporal augmentation, the F1 score at a fixed threshold of 0.5 varies considerably between seeds (standard deviation 0.016--0.028), more than most differences between these conditions; with time shift or random cropping, the standard deviation decreases to approximately 0.003. The overfitted models produce extreme probabilities, so that small changes shift many predictions across a fixed threshold. Threshold-independent metrics (AUROC, AUPRC) and F1 at validation-tuned thresholds therefore constitute the more reliable basis for comparison.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{e3_augment.png}
+  \caption{E3: data augmentations for ResNet1D-10. (a) Validation macro AUROC (mean $\pm$ standard deviation over three seeds; the combination of all augmentations coincides with random cropping and is omitted). (b) Gain in test macro AUROC relative to training without augmentation; bars show the mean, dots the individual seeds.}
+  \label{fig:e3}
+\end{figure}
+
+\subsection{E4: Effect of the number of leads}
+
+\begin{table}[htb]
+  \caption{E4: lead sets.}
+  \label{tab:e4leads}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{ll}
+    \toprule
+    Lead set & Leads \\
+    \midrule
+    \textbf{12 leads} & I, II, III, aVR, aVL, aVF, V1--V6 \\
+    \textbf{6 limb leads} & I, II, III, aVR, aVL, aVF \\
+    \textbf{Lead II} & II \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[htb]
+  \caption{E4: ResNet1D-10 with random cropping on three lead sets; test fold, mean $\pm$ standard deviation over three seeds; 95\% bootstrap confidence interval of the macro AUROC averaged over seeds. NORM--HYP: per-class test AUROC. Best value per column in bold.}
+  \label{tab:e4}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lrrcrrrrrrr}
+    \toprule
+    Lead set & Val macro AUROC & Test macro AUROC & 95\% CI & Macro AUPRC & Macro F1 @tuned & NORM & MI & STTC & CD & HYP \\
+    \midrule
+    12 leads & \textbf{0.9314\,$\pm$\,0.0010} & \textbf{0.9280\,$\pm$\,0.0015} & [0.921, 0.935] & \textbf{0.8216} & \textbf{0.7491} & \textbf{0.9445} & \textbf{0.9321} & \textbf{0.9343} & \textbf{0.9223} & \textbf{0.9069} \\
+    6 limb leads & 0.9032\,$\pm$\,0.0007 & 0.8953\,$\pm$\,0.0004 & [0.888, 0.904] & 0.7570 & 0.6913 & 0.9252 & 0.8873 & 0.9166 & 0.8847 & 0.8627 \\
+    Lead II & 0.8681\,$\pm$\,0.0002 & 0.8591\,$\pm$\,0.0002 & [0.850, 0.868] & 0.6831 & 0.6412 & 0.8999 & 0.8337 & 0.8797 & 0.8793 & 0.8031 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[htb]
+  \caption{E4: decrease in test AUROC per class when the six precordial leads are omitted (12 leads $\to$ 6 limb leads).}
+  \label{tab:e4drop}
+  \centering\footnotesize
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{lr}
+    \toprule
+    Class & Drop \\
+    \midrule
+    MI & $-$0.045 \\
+    HYP & $-$0.044 \\
+    CD & $-$0.038 \\
+    NORM & $-$0.019 \\
+    STTC & $-$0.018 \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+
+\paragraph{Performance.} Only the input leads change between the three lead sets of Table~\ref{tab:e4leads}. Omitting the six precordial leads reduces the macro AUROC by 0.033 (Table~\ref{tab:e4}), and restricting the input to lead II reduces it by 0.069; the 95\% confidence intervals of the three lead sets ([0.921, 0.935], [0.888, 0.904] and [0.850, 0.868]) do not overlap. The macro AUPRC decreases even more strongly, from 0.822 to 0.757 and 0.683. Since only the first convolution depends on the number of input leads, the model size (2.80--2.81M parameters) and the training time remain unchanged.
+
+\paragraph{Class-specific information.} Without V1--V6, the largest losses occur for MI ($-0.045$), HYP ($-0.044$) and CD ($-0.038$), whereas NORM and STTC lose only 0.019 and 0.018 (Table~\ref{tab:e4drop}, Figure~\ref{fig:e4}a). This agrees with clinical practice: anterior infarctions manifest mainly in V1--V4, the voltage criteria for left ventricular hypertrophy refer to V1, V5 and V6, and bundle branch blocks are recognized from the QRS morphology in V1 and V6. Relative to the six limb leads, lead II alone loses only 0.005 for CD, but 0.054 for MI and 0.060 for HYP. Conduction disturbances such as atrioventricular blocks manifest as timing changes, e.g.\ of the PR interval, which are visible in a single lead, whereas infarction and hypertrophy depend on the spatial distribution of the signal across leads. As the six limb leads contain only two independent signals (Section~\ref{sec:eda}), the comparison between six limb leads and lead II effectively compares two independent signals with one.
+
+\paragraph{Training dynamics.} With fewer leads, the network memorizes the training set less: the training loss at epoch 50 amounts to 0.16, 0.25 and 0.32 for 12, 6 and 1 lead(s), and the best validation epoch moves later (32, 35 and 47; Figure~\ref{fig:e4}b). The minimum validation loss nevertheless rises from 0.30 to 0.33 and 0.37. The omitted leads therefore remove diagnostic information rather than noise.
+
+\begin{figure}[htb]
+  \centering
+  \includegraphics[width=\linewidth]{e4_leads.png}
+  \caption{E4: ResNet1D-10 with random cropping on three lead sets. (a) Test AUROC, macro-averaged and per class. (b) Training (dashed) and validation (solid) loss (mean $\pm$ standard deviation over three seeds).}
+  \label{fig:e4}
+\end{figure}
+
+% =====================================================================================
+\section{Conclusion and next steps}
+
+This report established and validated the baselines of the project. The reproduction of \wang{} ($0.9299$ compared with the published $0.930$) demonstrates that the pipeline is consistent with the PTB-XL benchmark, so that all further comparisons rest on a verified basis. The baselines and the first experiments support four principal conclusions. First, representations learned from the signal outperform hand-crafted features (FCN $0.919$ vs.\ SVM $0.903$), and an SVM on the raw waveform fails owing to its lack of shift invariance. Second, performance on PTB-XL is limited by generalization rather than by capacity: deeper ResNets yield no improvement, a network with 0.28M parameters outperforms networks with 2.8--11.9M parameters trained in the same way, and random cropping, which prevents the memorization of individual recordings, is the single most effective intervention ($+0.016$). Third, once the protocol is fixed, the type of operation over time is of minor importance, whereas the input is of major importance: the precordial leads are essential for MI, HYP and CD. Fourth, performance is not uniform across patients; it decreases for patients aged 80 years or older, in whom pathologies co-occur, and is lower for women than for men.
+
+The next steps are ordered such that the controlled questions on PTB-XL are completed before the data basis is extended and the final comparison is carried out:
+\begin{enumerate}
+  \item \textbf{Higher sampling rate (E5).} Comparison of the 100\,Hz and 500\,Hz versions, which completes the research questions and fixes the input configuration for all subsequent steps; in addition, the lead comparison of E4 will be repeated for the SVM baseline.
+  \item \textbf{Class imbalance.} Methods that address the low AUPRC of HYP, such as positive-class weighting of the binary cross-entropy, the focal loss and resampling, evaluated primarily by the AUPRC and F1 of the minority classes.
+  \item \textbf{Performance by age and sex.} Extension of the subgroup analysis to all models, and incorporation of age and sex as additional inputs, concatenated to the pooled ECG features before the classifier.
+  \item \textbf{Additional datasets.} External validation on datasets with different populations and devices: CODE-15\%, a public subset of approximately 345,000 12-lead ECGs from the Brazilian dataset of Ribeiro et al.\ \citep{ribeiro2020}, whose label set requires a mapping to the PTB-XL superclasses; and the SJLIFE dataset of paired clinical 12-lead and Apple Watch ECGs, which permits the evaluation of the transition from clinical recordings to a single-lead wearable device and thereby extends E4.
+  \item \textbf{Further improvements from the state of the art.} Techniques reported to improve ECG classification, in particular self-supervised pre-training \citep{mehari2022}, for which the additional datasets provide unlabelled training data.
+  \item \textbf{Comparison with the state of the art.} A final comparison of the best configuration with published results under identical evaluation, complemented by an analysis of the signal regions on which the models rely, using saliency methods such as Grad-CAM.
+\end{enumerate}
+
+\clearpage
+\begin{thebibliography}{99}
+\small
+\bibitem{wagner2020}
+Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F. I., Samek, W., and Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset. \emph{Scientific Data}, 7, 154. \url{https://doi.org/10.1038/s41597-020-0495-6}.
+
+\bibitem{strodthoff2021}
+Strodthoff, N., Wagner, P., Schaeffter, T., and Samek, W. (2021). Deep learning for ECG analysis: Benchmarks and insights from PTB-XL. \emph{IEEE Journal of Biomedical and Health Informatics}, 25(5), 1519--1528. \url{https://doi.org/10.1109/JBHI.2020.3022989}.
+
+\bibitem{wang2017}
+Wang, Z., Yan, W., and Oates, T. (2017). Time series classification from scratch with deep neural networks: A strong baseline. In \emph{International Joint Conference on Neural Networks (IJCNN)}, pp. 1578--1585. \url{https://doi.org/10.1109/IJCNN.2017.7966039}.
+
+\bibitem{hannun2019}
+Hannun, A. Y., Rajpurkar, P., Haghpanahi, M., Tison, G. H., Bourn, C., Turakhia, M. P., and Ng, A. Y. (2019). Cardiologist-level arrhythmia detection and classification in ambulatory electrocardiograms using a deep neural network. \emph{Nature Medicine}, 25(1), 65--69. \url{https://doi.org/10.1038/s41591-018-0268-3}.
+
+\bibitem{ribeiro2020}
+Ribeiro, A. H., Ribeiro, M. H., Paix\~ao, G. M. M., Oliveira, D. M., Gomes, P. R., Canazart, J. A., Ferreira, M. P. S., Andersson, C. R., Macfarlane, P. W., Meira Jr., W., Sch\"on, T. B., and Ribeiro, A. L. P. (2020). Automatic diagnosis of the 12-lead ECG using a deep neural network. \emph{Nature Communications}, 11, 1760. \url{https://doi.org/10.1038/s41467-020-15432-4}.
+
+\bibitem{mehari2022}
+Mehari, T., and Strodthoff, N. (2022). Self-supervised representation learning from 12-lead ECG data. \emph{Computers in Biology and Medicine}, 141, 105114. \url{https://doi.org/10.1016/j.compbiomed.2021.105114}.
+
+\bibitem{he2016}
+He, K., Zhang, X., Ren, S., and Sun, J. (2016). Deep residual learning for image recognition. In \emph{IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, pp. 770--778. \url{https://doi.org/10.1109/CVPR.2016.90}.
+
+\bibitem{hochreiter1997}
+Hochreiter, S., and Schmidhuber, J. (1997). Long short-term memory. \emph{Neural Computation}, 9(8), 1735--1780. \url{https://doi.org/10.1162/neco.1997.9.8.1735}.
+
+\bibitem{vaswani2017}
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, \L., and Polosukhin, I. (2017). Attention is all you need. In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, pp. 5998--6008. \url{https://arxiv.org/abs/1706.03762}.
+
+\bibitem{cortes1995}
+Cortes, C., and Vapnik, V. (1995). Support-vector networks. \emph{Machine Learning}, 20(3), 273--297. \url{https://doi.org/10.1007/BF00994018}.
+\end{thebibliography}
+
+\end{document}

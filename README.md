@@ -24,7 +24,7 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 - [Standard training protocol](#standard-training-protocol)
 - [Running experiments](#running-experiments)
 - [Experiments](#experiments)
-  - [B0: Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark-resnet1d_wang)
+  - [B0: Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark)
   - [E1: Does depth help?](#e1-does-depth-help-resnet1d-10-vs-resnet1d-18-vs-resnet1d-34)
   - [E2: Which operation type fits ECG?](#e2-which-operation-type-fits-ecg-convolution-vs-bilstm-vs-cnn--transformer)
   - [E3: Which augmentations help?](#e3-which-augmentations-help-none-vs-noise-baseline-wander-scaling-time-shift-random-crop)
@@ -43,7 +43,7 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 
 | ID | Question | Variants compared |
 |:--:|:---------|:------------------|
-| **B0** | [Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark-resnet1d_wang) | `resnet1d_wang` with the benchmark's training procedure, official split (train 1–8, val 9, test 10) |
+| **B0** | [Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark) | `resnet1d_wang` with the benchmark's training procedure; FCN (`fcn_wang`) with the standard protocol; official split (train 1–8, val 9, test 10) |
 | **E1** | [Does depth help?](#e1-does-depth-help-resnet1d-10-vs-resnet1d-18-vs-resnet1d-34) | ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34 |
 | **E2** | [Which operation type fits ECG?](#e2-which-operation-type-fits-ecg-convolution-vs-bilstm-vs-cnn--transformer) | Convolution vs BiLSTM vs CNN + Transformer |
 | **E3** | [Which augmentations help?](#e3-which-augmentations-help-none-vs-noise-baseline-wander-scaling-time-shift-random-crop) | None, noise, baseline wander, scaling, time shift, random crop |
@@ -73,6 +73,7 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 │   │   ├── __init__.py                    model registry
 │   │   ├── bilstm.py                      bidirectional LSTM on the raw signal (E2)
 │   │   ├── cnn_transformer.py             convolutional front-end + Transformer encoder (E2)
+│   │   ├── fcn1d.py                       FCN of Wang et al. (B0 baseline)
 │   │   ├── heads.py                       classification heads (average pooling; concat pooling + dropout)
 │   │   ├── resnet1d.py                    classic ResNet1D-10/-18/-34 and custom ResNet1D-10 variants (S1)
 │   │   ├── resnet1d_plus.py               configurable ResNet for the architecture search (S2)
@@ -80,6 +81,7 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 │   ├── training/
 │   │   └── train.py                       training loop, logging, checkpointing (+ test evaluation at the end)
 │   ├── evaluation/
+│   │   ├── age_analysis.py                test metrics per age group and per sex (error analysis)
 │   │   ├── evaluate.py                    (re-)evaluate runs: val/test metrics, val-tuned thresholds, bootstrap CIs
 │   │   ├── metrics.py                     AUROC, AUPRC, F1 (macro + per class)
 │   │   └── summarize.py                   collect runs of an experiment into tables (mean ± std over seeds)
@@ -87,6 +89,7 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 │   │   ├── exploratory_data_analysis.py   EDA figures + summary numbers
 │   │   └── plot_runs.py                   learning curves and per-class plots for any experiment
 │   └── experiments/
+│       ├── b0_baseline.py                 B0: FCN baseline under the standard protocol
 │       ├── b0_benchmark.py                B0: reproduction of resnet1d_wang (Strodthoff et al.)
 │       ├── e1_depth.py                    E1: ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34
 │       ├── e2_operation.py                E2: convolution vs BiLSTM vs CNN + Transformer
@@ -117,7 +120,7 @@ pip install -r requirements.txt
 
 ### Data
 
-Download PTB-XL v1.0.3 [[2]](#references) from [PhysioNet](https://physionet.org/content/ptb-xl/) [[3]](#references) and extract it so that the files sit under `data/ptb-xl/` (e.g. `data/ptb-xl/ptbxl_database.csv`). Then build the cache:
+Download PTB-XL **v1.0.1** [[2]](#references) from [PhysioNet](https://physionet.org/content/ptb-xl/1.0.1/) [[3]](#references) (21,837 records, the version used by the benchmark of Strodthoff et al. [[4]](#references); v1.0.3 removed duplicates and has 21,799) and extract it so that the files sit under `data/ptb-xl/` (e.g. `data/ptb-xl/ptbxl_database.csv`). Then build the cache:
 
 ```bash
 python -m src.data.preprocess              # 100 Hz, ~1 GB, ~30 s
@@ -131,7 +134,7 @@ The cache stores **all** records with **all** 12 leads as raw mV (`data/processe
 | `--fs` | `100`, `500` | E5 |
 | `--leads` | `all12`, `limb6`, `precordial6`, `lead1`, `lead2`, or any list like `I,II,V2` | E4 |
 | `--augment` | `none` or any of `noise,wander,scale,shift,crop` | E3 |
-| `--model` | `resnet1d10`, `resnet1d18`, `resnet1d34`, `resnet1d_wang`, and the S1 variants `resnet1d10_stem1`, `resnet1d10_chead`, `resnet1d10_w128`, `resnet1d10_stem1_chead_w128`, `resnet1d_plus`, `bilstm` and `cnn_transformer` (configured with `--model-kwargs`) (add new ones in `src/models/__init__.py`) | B0, E1, E2, S1, S2 |
+| `--model` | `fcn1d`, `resnet1d10`, `resnet1d18`, `resnet1d34`, `resnet1d_wang`, and the S1 variants `resnet1d10_stem1`, `resnet1d10_chead`, `resnet1d10_w128`, `resnet1d10_stem1_chead_w128`, `resnet1d_plus`, `bilstm` and `cnn_transformer` (configured with `--model-kwargs`) (add new ones in `src/models/__init__.py`) | B0, E1, E2, S1, S2 |
 | `--standardize` | `per_lead` (standard) or `global` (one mean/std, as in the benchmark) | B0 |
 
 **Labels:** every diagnostic SCP statement is mapped to its superclass regardless of likelihood (as in the PhysioNet example and the Strodthoff et al. benchmark [[4]](#references)). The 407 records with no superclass label are dropped. Signals are z-scored per lead with mean/std from the training folds only.
@@ -193,11 +196,20 @@ Per experiment: `runs/<exp>/runs.csv`, `summary.csv` / `summary.md` (mean ± std
 
 ## Experiments
 
-### B0: Can we reproduce a benchmark? `resnet1d_wang`
+### B0: Can we reproduce a benchmark?
 
 ```bash
-python -m src.experiments.b0_benchmark
+python -m src.experiments.b0_benchmark                  # resnet1d_wang, benchmark procedure, 3 seeds
+python -m src.experiments.b0_baseline                   # FCN, standard protocol, 3 seeds
+python -m src.evaluation.age_analysis --exp b0_baseline # performance by age and sex
 ```
+
+B0 comprises two baselines of Wang et al. [[10]](#references), both part of the PTB-XL benchmark of Strodthoff et al. [[4]](#references):
+
+1. `resnet1d_wang`, trained with the benchmark's training procedure, to verify that the pipeline reproduces a published result;
+2. the fully convolutional network (FCN), trained with the standard protocol, as a simple convolutional baseline for the subsequent experiments, together with an analysis of performance by age and sex.
+
+#### Reproduction of `resnet1d_wang`
 
 The `resnet1d_wang` model of the PTB-XL benchmark of Strodthoff et al. [[4]](#references), the 1D ResNet of Wang et al. [[10]](#references) as implemented in the benchmark code, is reimplemented in `src/models/resnet1d_wang.py`: a stem convolution (kernel size 7, stride 1, no pooling), three residual blocks of 128 channels with kernel sizes 5 and 3 and strides 1, 2 and 2, and a head of concatenated max and average pooling, batch-norm, dropout 0.25, a linear layer of 128 units, ReLU, batch-norm, dropout 0.5 and the output layer (0.47M parameters). It is trained with the training procedure of the benchmark, which differs from the standard protocol in the following points:
 
@@ -211,8 +223,6 @@ The `resnet1d_wang` model of the PTB-XL benchmark of Strodthoff et al. [[4]](#re
 | **Checkpoint** | final epoch | epoch with the best validation macro AUROC |
 
 All other settings (100 Hz, 12 leads, official split, BCE loss, AdamW with weight decay 0.01, one-cycle schedule, 50 epochs, batch size 128) are shared. Both checkpoints are evaluated: the final epoch, which is the benchmark's procedure, and the best validation epoch, which is the selection used in all other experiments.
-
-#### Results
 
 *resnet1d_wang, test set (fold 10), mean ± std over 3 seeds:*
 
@@ -232,10 +242,56 @@ All other settings (100 Hz, 12 leads, official split, BCE loss, AdamW with weigh
 
 - **Comparison with ResNet1D-10.** Trained with random crop in E3, ResNet1D-10 (2.8M parameters) reaches 0.9280 ± 0.0015; `resnet1d_wang` with the benchmark procedure reaches 0.9324 ± 0.0011 with the same checkpoint selection, six times fewer parameters and a similar training time (33 s per run). Since the two also differ in learning rate, β₂, standardization and architecture (no downsampling in the stem, dropout in the head), this comparison does not identify which of these differences accounts for the advantage.
 
-- **Remaining differences from the original setup.** The reproduction uses PyTorch instead of fastai v1, PTB-XL v1.0.3 instead of the earlier release with which the benchmark was published, and the implementation details of each framework (e.g. default weight initialization). Given the agreement with the published value, these differences appear to have no material effect on the result.
+- **Remaining differences from the original setup.** The reproduction uses the same data release as the benchmark (PTB-XL v1.0.1), but PyTorch instead of fastai v1, with the implementation details of each framework (e.g. default weight initialization). Given the agreement with the published value, these differences appear to have no material effect on the result.
 
 <p align="center">
   <img src="runs/b0_benchmark/figures/curves.png" alt="B0 learning curves" width="100%">
+</p>
+
+#### FCN baseline under the standard protocol
+
+The fully convolutional network (FCN) of Wang et al. [[10]](#references) (`src/models/fcn1d.py`) consists of three blocks of Conv1d + BatchNorm + ReLU with 128/256/128 filters and kernel sizes 8/5/3 (stride 1, "same" padding, no downsampling), followed by global average pooling and a linear layer (**0.28M** parameters). Its convolutional layers are those of `fcn_wang` in the benchmark of Strodthoff et al. [[4]](#references), which reports a macro AUROC of **0.925** on the superclass task. Two differences remain: the benchmark uses the same head as `resnet1d_wang` (concatenated max and average pooling and a hidden layer of 128 units), and the FCN here is trained with the standard protocol rather than with the benchmark's procedure. The comparison with the published value is therefore approximate.
+
+`age_analysis` recomputes the test metrics of every run separately per age group (<40, 40–59, 60–79, 80+; the PTB-XL placeholder age 300 is mapped to 90+) and per sex, with group sizes, class prevalence per group and 95% bootstrap CIs. It only reads `predictions.npz`, so it also works on any earlier experiment (e.g. `--exp e1_depth`). Outputs: `runs/<exp>/subgroups/` (`age_summary.md`, `sex_summary.md`, CSVs, `figures/`).
+
+*Test set (fold 10), mean ± std over 3 seeds:*
+
+| Model | Params | Macro AUROC | Macro AUPRC | Macro F1 @0.5 | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+|:------|-------:|------------:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
+| **FCN (B0)** | 0.28M | **0.9192 ± 0.0013** | 0.8065 ± 0.0012 | 0.7231 ± 0.0055 | 0.7368 ± 0.0035 | 0.9395 | 0.9232 | 0.9322 | 0.9063 | 0.8947 |
+| `fcn_wang`, benchmark [[4]](#references) | – | 0.925 | – | – | – | – | – | – | – | – |
+
+- **Close to the published value.** The macro AUROC (0.919) is 0.006 below the 0.925 reported for `fcn_wang` [[4]](#references). The difference in training procedure is the most likely cause: random 2.5 s crops alone improve ResNet1D-10 by 0.016 (E3), and `resnet1d_wang` reproduces its published value when trained with the benchmark's procedure (above). The three seeds give 0.9184, 0.9185 and 0.9206, and re-running a seed reproduces its result exactly.
+
+- **No overfitting.** The best validation epoch lies between 32 and 37 and the validation loss stays at approximately 0.29 until the end of training, while the training loss decreases to 0.19. With 0.28M parameters the network cannot memorize the training set, unlike the ResNets of E1.
+
+- **The small FCN outperforms all three ResNets of E1** (0.919 vs 0.912–0.913) with 10–42 times fewer parameters, consistently over all seeds. Together with the early overfitting of the ResNets, this indicates that performance on PTB-XL is limited by generalization rather than by model capacity.
+
+- **CD and HYP remain the weakest classes**, as for the ResNets.
+
+#### Performance by age and sex
+
+*Test set (fold 10), macro AUROC, mean ± std over 3 seeds, 95% bootstrap CI (B0); 15 test records without age are left out of the age groups:*
+
+| Age | n | % NORM | FCN (B0) | 95% CI | ResNet1D-18 | ResNet1D-34 |
+|:----|--:|-------:|---------:|:------:|------------:|------------:|
+| <40 | 284 | 83.1 | 0.9225 ± 0.0054 | [0.890, 0.949] | 0.8988 | 0.9033 |
+| 40–59 | 642 | 60.4 | 0.9159 ± 0.0019 | [0.899, 0.931] | 0.9076 | 0.9070 |
+| 60–79 | 916 | 34.8 | 0.9099 ± 0.0011 | [0.899, 0.921] | 0.9031 | 0.9042 |
+| 80+ | 306 | 6.9 | **0.8734 ± 0.0010** | [0.848, 0.895] | 0.8679 | 0.8652 |
+| all | 2163 | 44.6 | 0.9192 ± 0.0013 | [0.912, 0.926] | 0.9127 | 0.9131 |
+
+- **Performance drops for patients aged 80+** for all three models; for B0 the 95% CI of this group does not overlap with that of the whole test set. In this group only 6.9% of the records are normal and most carry several superclasses at once (MI 46.7%, STTC 42.8%, CD 42.2%), so co-occurring pathologies have to be separated. HYP is affected most (AUROC 0.818 for B0 at 80+).
+- **Results for patients under 40 are uncertain:** the group contains few abnormal records (e.g. 7 MI cases), which gives a wide CI.
+- **By sex**, B0 reaches 0.931 [0.921, 0.939] for men and 0.907 [0.895, 0.919] for women, with the largest gaps for MI (0.938 vs 0.905) and STTC (0.944 vs 0.919); the ResNets show the same direction (0.918 vs 0.907 for ResNet1D-18).
+- Full tables: `runs/b0_baseline/subgroups/` and `runs/e1_depth/subgroups/`.
+
+<p align="center">
+  <img src="runs/b0_baseline/figures/curves.png" alt="B0 learning curves" width="100%">
+</p>
+<p align="center">
+  <img src="runs/b0_baseline/subgroups/figures/age_auc.png" alt="B0 test AUROC by age" width="49%">
+  <img src="runs/b0_baseline/subgroups/figures/age_auc_per_class.png" alt="B0 per-class test AUROC by age" width="49%">
 </p>
 
 ### E1: Does depth help? ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34
@@ -557,7 +613,7 @@ The search ran in three rounds:
 ## References
 
 1. Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F. I., Samek, W., and Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset. *Scientific Data*, 7, 154. <https://doi.org/10.1038/s41597-020-0495-6>
-2. Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., and Schaeffter, T. (2022). PTB-XL, a large publicly available electrocardiography dataset (version 1.0.3). *PhysioNet*. <https://doi.org/10.13026/kfzx-aw45>
+2. Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., and Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset (version 1.0.1). *PhysioNet*. <https://physionet.org/content/ptb-xl/1.0.1/>
 3. Pollard, T., Moody, B. E., Lehman, L., Gow, B., Fernandes, C., Xie, C., Johnson, A., Mark, R. G., and Heldt, T. (2026). PhysioNet as a global platform for biomedical research. *Nature Health*. <https://doi.org/10.1038/s44360-026-00096-z>
 4. Strodthoff, N., Wagner, P., Schaeffter, T., and Samek, W. (2021). Deep learning for ECG analysis: Benchmarks and insights from PTB-XL. *IEEE Journal of Biomedical and Health Informatics*, 25(5), 1519–1528. <https://doi.org/10.1109/JBHI.2020.3022989>
 5. Loshchilov, I., and Hutter, F. (2019). Decoupled weight decay regularization. *International Conference on Learning Representations (ICLR)*. <https://arxiv.org/abs/1711.05101>

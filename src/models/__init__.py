@@ -6,6 +6,7 @@ from torch import nn
 
 from src.models.bilstm import bilstm
 from src.models.cnn_transformer import cnn_transformer
+from src.models.fcn1d import fcn1d
 from src.models.resnet1d import (
     resnet1d10, resnet1d10_chead, resnet1d10_stem1, resnet1d10_stem1_chead_w128, resnet1d10_w128,
     resnet1d18, resnet1d34,
@@ -14,6 +15,8 @@ from src.models.resnet1d_plus import resnet1d_plus
 from src.models.resnet1d_wang import resnet1d_wang
 
 MODELS = {
+    # FCN baseline (B0)
+    "fcn1d": fcn1d,
     # classic ResNet layout (E1)
     "resnet1d10": resnet1d10,
     "resnet1d18": resnet1d18,

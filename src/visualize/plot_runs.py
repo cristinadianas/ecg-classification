@@ -108,23 +108,35 @@ def save(fig, path: Path):
 def plot_experiment(exp: str, variant_order: list[str] | None = None,
                     labels: dict[str, str] | None = None):
     """`variant_order` fixes colour and legend order; `labels` maps variant -> legend text
-    (default: the variant name without the parts all variants share)."""
+    (default: the variant name without the parts all variants share). Runs without a
+    training history (e.g. the SVM) appear only in the test plot."""
     exp_dir = RUNS_DIR / exp
     hist = load_histories(exp_dir)
-    if hist.empty:
+    runs = collect_runs(exp_dir)
+    if hist.empty and runs.empty:
         print(f"nothing to plot in {exp_dir}")
         return
-    variants = variant_order or sorted(hist.variant.unique())
+    found = list(dict.fromkeys([*(hist.variant if not hist.empty else []),
+                                *(runs.variant if not runs.empty else [])]))
+    variants = variant_order or sorted(found)
     colors = {v: SERIES[i % len(SERIES)] for i, v in enumerate(variants)}
     auto_labels, shared = short_labels(variants)
     labels = {**auto_labels, **(labels or {})}
-    n_seeds = hist.groupby("variant").seed.nunique()
+    n_seeds = (runs if not runs.empty else hist).groupby("variant").seed.nunique()
     subtitle = exp + (f"  ·  {shared}" if shared else "")
     if n_seeds.max() > 1:
         seeds = n_seeds.max() if n_seeds.min() == n_seeds.max() else f"{n_seeds.min()}–{n_seeds.max()}"
         subtitle += f"  ·  mean ± std over {seeds} seeds"
     out = exp_dir / "figures"
+    with_history = [v for v in variants if not hist.empty and v in set(hist.variant)]
+    if with_history:
+        plot_curves(hist, with_history, colors, labels, subtitle, out)
+    if not runs.empty:
+        plot_test_auc(runs, variants, colors, labels, out)
 
+
+def plot_curves(hist, variants, colors, labels, subtitle, out):
+    """curves.png and val_auc_per_class.png for the variants that have a training history."""
     # ---- learning curves
     fig, axes = plt.subplots(1, 3, figsize=(10.5, 3.0))
     for v in variants:
@@ -171,10 +183,9 @@ def plot_experiment(exp: str, variant_order: list[str] | None = None,
     fig.tight_layout()
     save(fig, out / "val_auc_per_class.png")
 
-    # ---- test AUC per class (dot plot: differences are ~0.01, bars from 0 would hide them)
-    runs = collect_runs(exp_dir)
-    if runs.empty:
-        return
+
+def plot_test_auc(runs, variants, colors, labels, out):
+    """test_auc_per_class.png (dot plot: differences are ~0.01, bars from 0 would hide them)."""
     rows = ["macro"] + CLASSES
     cols = ["test_macro_auc"] + [f"test_auc_{c}" for c in CLASSES]
     present = [v for v in variants if v in set(runs.variant)]

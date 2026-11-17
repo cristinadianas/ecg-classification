@@ -55,7 +55,8 @@ def to_markdown(summary: pd.DataFrame) -> str:
             *[f"AUC {c}" for c in CLASSES]]
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for _, r in summary.iterrows():
-        cells = [r["variant"], f"{r['n_params'] / 1e6:.1f}M", str(r["n_seeds"])]
+        params = "–" if pd.isna(r["n_params"]) else f"{r['n_params'] / 1e6:.1f}M"  # "–": not a neural network
+        cells = [r["variant"], params, str(r["n_seeds"])]
         for c in HEADLINE:
             std = r[f"{c}_std"]
             cells.append(f"{r[f'{c}_mean']:.4f}" + ("" if pd.isna(std) else f" ± {std:.4f}"))

@@ -2,13 +2,13 @@
 
 Multi-label classification of 12-lead ECGs from the [PTB-XL](https://physionet.org/content/ptb-xl/) dataset [[1, 2]](#references) into the 5 diagnostic superclasses:
 
-| Code | Meaning |
+| <small>Code</small> | <small>Meaning</small> |
 |:----:|:--------|
-| **NORM** | Normal ECG |
-| **MI**   | Myocardial infarction |
-| **STTC** | ST/T change |
-| **CD**   | Conduction disturbance |
-| **HYP**  | Hypertrophy |
+| <small>**NORM**</small> | <small>Normal ECG</small> |
+| <small>**MI**</small> | <small>Myocardial infarction</small> |
+| <small>**STTC**</small> | <small>ST/T change</small> |
+| <small>**CD**</small> | <small>Conduction disturbance</small> |
+| <small>**HYP**</small> | <small>Hypertrophy</small> |
 
 Several classes can be true at once, so every model has 5 sigmoid outputs trained with binary cross-entropy.
 
@@ -19,12 +19,13 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 - [Research questions](#research-questions)
 - [Repository structure](#repository-structure)
 - [Setup](#setup)
-  - [Data](#data)
-  - [Exploratory data analysis](#exploratory-data-analysis)
+- [Data](#data)
+- [Exploratory data analysis](#exploratory-data-analysis)
 - [Standard training protocol](#standard-training-protocol)
 - [Running experiments](#running-experiments)
-- [Experiments](#experiments)
+- [Baseline](#baseline)
   - [B0: Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark)
+- [Experiments](#experiments)
   - [E1: Does depth help?](#e1-does-depth-help-resnet1d-10-vs-resnet1d-18-vs-resnet1d-34)
   - [E2: Which operation type fits ECG?](#e2-which-operation-type-fits-ecg-convolution-vs-bilstm-vs-cnn--transformer)
   - [E3: Which augmentations help?](#e3-which-augmentations-help-none-vs-noise-baseline-wander-scaling-time-shift-random-crop)
@@ -32,7 +33,7 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
   - [E5: Does finer resolution help?](#e5-does-finer-resolution-help-100-hz-vs-500-hz)
 - [Supplementary study: Optimizing the ResNet architecture](#supplementary-study-optimizing-the-resnet-architecture)
   - [S1: Which ResNet design choices help?](#s1-which-resnet-design-choices-help-custom-resnet-variants)
-  - [S2: How far can a ResNet go?](#s2-how-far-can-a-resnet-go-target-macro-auroc-094)
+  - [S2: How far can a ResNet go?](#s2-how-far-can-a-resnet-go-architecture-search-within-the-resnet-family)
 - [References](#references)
 
 ---
@@ -41,21 +42,21 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 
 **Goal:** find which architecture reads ECGs best, and which choices drive its performance.
 
-| ID | Question | Variants compared |
+| <small>ID</small> | <small>Question</small> | <small>Variants compared</small> |
 |:--:|:---------|:------------------|
-| **B0** | [Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark) | `resnet1d_wang` with the benchmark's training procedure; FCN (`fcn_wang`) with the standard protocol; official split (train 1–8, val 9, test 10) |
-| **E1** | [Does depth help?](#e1-does-depth-help-resnet1d-10-vs-resnet1d-18-vs-resnet1d-34) | ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34 |
-| **E2** | [Which operation type fits ECG?](#e2-which-operation-type-fits-ecg-convolution-vs-bilstm-vs-cnn--transformer) | Convolution vs BiLSTM vs CNN + Transformer |
-| **E3** | [Which augmentations help?](#e3-which-augmentations-help-none-vs-noise-baseline-wander-scaling-time-shift-random-crop) | None, noise, baseline wander, scaling, time shift, random crop |
-| **E4** | [How many leads are needed?](#e4-how-many-leads-are-needed-12-leads-vs-6-limb-leads-vs-lead-ii-only) | 12 leads vs 6 limb leads vs lead II only |
-| **E5** | [Does finer resolution help?](#e5-does-finer-resolution-help-100-hz-vs-500-hz) | 100 Hz (1000 × 12) vs 500 Hz (5000 × 12) input |
+| <small>**B0**</small> | <small>[Can we reproduce a benchmark?](#b0-can-we-reproduce-a-benchmark)</small> | <small>`resnet1d_wang` with the benchmark's training procedure; FCN (`fcn_wang`) with the standard protocol; RBF SVM on hand-crafted features and on the raw waveform; official split (train 1–8, val 9, test 10)</small> |
+| <small>**E1**</small> | <small>[Does depth help?](#e1-does-depth-help-resnet1d-10-vs-resnet1d-18-vs-resnet1d-34)</small> | <small>ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34</small> |
+| <small>**E2**</small> | <small>[Which operation type fits ECG?](#e2-which-operation-type-fits-ecg-convolution-vs-bilstm-vs-cnn--transformer)</small> | <small>Convolution vs BiLSTM vs CNN + Transformer</small> |
+| <small>**E3**</small> | <small>[Which augmentations help?](#e3-which-augmentations-help-none-vs-noise-baseline-wander-scaling-time-shift-random-crop)</small> | <small>None, noise, baseline wander, scaling, time shift, random crop</small> |
+| <small>**E4**</small> | <small>[How many leads are needed?](#e4-how-many-leads-are-needed-12-leads-vs-6-limb-leads-vs-lead-ii-only)</small> | <small>12 leads vs 6 limb leads vs lead II only</small> |
+| <small>**E5**</small> | <small>[Does finer resolution help?](#e5-does-finer-resolution-help-100-hz-vs-500-hz)</small> | <small>100 Hz (1000 × 12) vs 500 Hz (5000 × 12) input</small> |
 
 **Supplementary study: Optimizing the ResNet architecture.** The ResNet received considerably more design effort than the other model families; this study is therefore reported separately from the research questions ([details](#supplementary-study-optimizing-the-resnet-architecture)).
 
-| ID | Question | Variants compared |
+| <small>ID</small> | <small>Question</small> | <small>Variants compared</small> |
 |:--:|:---------|:------------------|
-| **S1** | [Which ResNet design choices help?](#s1-which-resnet-design-choices-help-custom-resnet-variants) | Classic ResNet1D-10 vs custom variants (stride-1 stem, concat-pooling head, constant width), deeper classic ResNets, `resnet1d_wang` |
-| **S2** | [How far can a ResNet go? (target: macro AUROC 0.94)](#s2-how-far-can-a-resnet-go-target-macro-auroc-094) | A single ResNet: architecture variants within the ResNet family, standard protocol unchanged, selected on validation |
+| <small>**S1**</small> | <small>[Which ResNet design choices help?](#s1-which-resnet-design-choices-help-custom-resnet-variants)</small> | <small>Classic ResNet1D-10 vs custom variants (stride-1 stem, concat-pooling head, constant width), deeper classic ResNets, `resnet1d_wang`</small> |
+| <small>**S2**</small> | <small>[How far can a ResNet go?](#s2-how-far-can-a-resnet-go-architecture-search-within-the-resnet-family)</small> | <small>A single ResNet: architecture variants within the ResNet family, standard protocol unchanged, selected on validation</small> |
 
 ---
 
@@ -69,8 +70,11 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 │   │   ├── preprocess.py                  build the signal cache (once per sampling rate)
 │   │   ├── dataset.py                     label aggregation, lead selection, split, standardization
 │   │   └── augment.py                     noise / baseline wander / scaling / time shift / random crop (for E3)
+│   ├── features/
+│   │   └── ecg_features.py                hand-crafted per-lead features: statistical, ECG + wavelet (B0 SVM)
 │   ├── models/
 │   │   ├── __init__.py                    model registry
+│   │   ├── SVM*.ipynb                     original SVM notebooks, kept for reference (B0)
 │   │   ├── bilstm.py                      bidirectional LSTM on the raw signal (E2)
 │   │   ├── cnn_transformer.py             convolutional front-end + Transformer encoder (E2)
 │   │   ├── fcn1d.py                       FCN of Wang et al. (B0 baseline)
@@ -79,7 +83,9 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 │   │   ├── resnet1d_plus.py               configurable ResNet for the architecture search (S2)
 │   │   └── resnet1d_wang.py               resnet1d_wang of the PTB-XL benchmark (B0)
 │   ├── training/
-│   │   └── train.py                       training loop, logging, checkpointing (+ test evaluation at the end)
+│   │   ├── svm_fit.py                     one binary SVM on a precomputed kernel (worker of train_svm.py)
+│   │   ├── train.py                       training loop, logging, checkpointing (+ test evaluation at the end)
+│   │   └── train_svm.py                   RBF SVM baseline: inputs, GPU kernel, grid on validation, evaluation
 │   ├── evaluation/
 │   │   ├── age_analysis.py                test metrics per age group and per sex (error analysis)
 │   │   ├── evaluate.py                    (re-)evaluate runs: val/test metrics, val-tuned thresholds, bootstrap CIs
@@ -91,9 +97,11 @@ Several classes can be true at once, so every model has 5 sigmoid outputs traine
 │   └── experiments/
 │       ├── b0_baseline.py                 B0: FCN baseline under the standard protocol
 │       ├── b0_benchmark.py                B0: reproduction of resnet1d_wang (Strodthoff et al.)
+│       ├── b0_svm.py                      B0: SVM on statistical features, ECG + wavelet features, raw waveform
 │       ├── e1_depth.py                    E1: ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34
 │       ├── e2_operation.py                E2: convolution vs BiLSTM vs CNN + Transformer
 │       ├── e3_augment.py                  E3: none / noise / baseline wander / scaling / time shift / random crop / all combined
+│       ├── e4_leads.py                    E4: 12 leads vs 6 limb leads vs lead II (ResNet1D-10)
 │       ├── s1_resnet_design.py            S1: classic vs custom ResNet variants
 │       └── s2_resnet_search.py            S2: ResNet architecture search (single model)
 ├── runs/<exp>/<run>/                      one folder per training run (weights not tracked)
@@ -118,7 +126,9 @@ pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
 ```
 
-### Data
+---
+
+## Data
 
 Download PTB-XL **v1.0.1** [[2]](#references) from [PhysioNet](https://physionet.org/content/ptb-xl/1.0.1/) [[3]](#references) (21,837 records, the version used by the benchmark of Strodthoff et al. [[4]](#references); v1.0.3 removed duplicates and has 21,799) and extract it so that the files sit under `data/ptb-xl/` (e.g. `data/ptb-xl/ptbxl_database.csv`). Then build the cache:
 
@@ -129,23 +139,122 @@ python -m src.data.preprocess --fs 500     # 500 Hz, ~5.2 GB (only needed for E5
 
 The cache stores **all** records with **all** 12 leads as raw mV (`data/processed/ptbxl_<fs>hz.npy`, shape `(21837, 12, fs*10)`, plus `labels.csv`). Everything that changes between experiments is applied at load time, so the same cache serves every experiment:
 
-| Option | Values | Used by |
+| <small>Option</small> | <small>Values</small> | <small>Used by</small> |
 |:-------|:-------|:-------:|
-| `--fs` | `100`, `500` | E5 |
-| `--leads` | `all12`, `limb6`, `precordial6`, `lead1`, `lead2`, or any list like `I,II,V2` | E4 |
-| `--augment` | `none` or any of `noise,wander,scale,shift,crop` | E3 |
-| `--model` | `fcn1d`, `resnet1d10`, `resnet1d18`, `resnet1d34`, `resnet1d_wang`, and the S1 variants `resnet1d10_stem1`, `resnet1d10_chead`, `resnet1d10_w128`, `resnet1d10_stem1_chead_w128`, `resnet1d_plus`, `bilstm` and `cnn_transformer` (configured with `--model-kwargs`) (add new ones in `src/models/__init__.py`) | B0, E1, E2, S1, S2 |
-| `--standardize` | `per_lead` (standard) or `global` (one mean/std, as in the benchmark) | B0 |
+| <small>`--fs`</small> | <small>`100`, `500`</small> | <small>E5</small> |
+| <small>`--leads`</small> | <small>`all12`, `limb6`, `precordial6`, `lead1`, `lead2`, or any list like `I,II,V2`</small> | <small>E4</small> |
+| <small>`--augment`</small> | <small>`none` or any of `noise,wander,scale,shift,crop`</small> | <small>E3</small> |
+| <small>`--model`</small> | <small>`fcn1d`, `resnet1d10`, `resnet1d18`, `resnet1d34`, `resnet1d_wang`, and the S1 variants `resnet1d10_stem1`, `resnet1d10_chead`, `resnet1d10_w128`, `resnet1d10_stem1_chead_w128`, `resnet1d_plus`, `bilstm` and `cnn_transformer` (configured with `--model-kwargs`) (add new ones in `src/models/__init__.py`)</small> | <small>B0, E1, E2, S1, S2</small> |
+| <small>`--standardize`</small> | <small>`per_lead` (standard) or `global` (one mean/std, as in the benchmark)</small> | <small>B0</small> |
 
 **Labels:** every diagnostic SCP statement is mapped to its superclass regardless of likelihood (as in the PhysioNet example and the Strodthoff et al. benchmark [[4]](#references)). The 407 records with no superclass label are dropped. Signals are z-scored per lead with mean/std from the training folds only.
 
-### Exploratory data analysis
+---
+
+<details>
+<summary><a id="exploratory-data-analysis"></a><h2 style="display:inline">Exploratory data analysis</h2></summary>
 
 ```bash
 python -m src.visualize.exploratory_data_analysis
 ```
 
-This writes the figures to `eda/figures/` and `eda/figures/slides/`, and the summary statistics to `eda/eda_summary.json`.
+This writes the figures to `eda/figures/` (versions for slides to `eda/figures/slides/`) and the summary statistics to `eda/eda_summary.json`. All numbers refer to the 21,837 records of PTB-XL v1.0.1.
+
+#### Labels
+
+- **The classes are imbalanced.** NORM covers 9,528 records (44%), MI 5,486 (25%), STTC 5,250 (24%), CD 4,907 (22%) and HYP 2,655 (12%); NORM is 3.6 times as frequent as HYP.
+- **The task is multi-label.** 75% of the records carry one superclass, 19% two, 4% three and 0.7% four; 407 records (1.9%) carry none and are dropped.
+- **Pathologies rarely occur alone.** 95% of the NORM records carry no other superclass, but only 46% of the MI and STTC, 35% of the CD and 20% of the HYP records. 57% of the HYP records also carry STTC, mostly through the subclass pair ISC_ + LVH (1,172 records, 92% of all ISC_ records).
+
+<p align="center">
+  <img src="eda/figures/fig01_label_structure.png" alt="Records per superclass, superclasses per record and conditional co-occurrence" width="100%">
+</p>
+
+*Figure 1. Records per superclass (dark: only this superclass), superclasses per record, and the share of records with the row superclass that also carry the column superclass.*
+
+<p align="center">
+  <img src="eda/figures/fig02_label_combinations.png" alt="Most frequent exact label combinations" width="85%">
+</p>
+
+*Figure 2. The most frequent exact combinations of superclasses (logarithmic scale).*
+
+<p align="center">
+  <img src="eda/figures/fig10_cooccurrence_superclass.png" alt="Records carrying both superclasses" width="45%">
+</p>
+
+*Figure 3. Records carrying both superclasses; the diagonal counts the records with only this superclass.*
+
+<p align="center">
+  <img src="eda/figures/fig11_cooccurrence_subclass.png" alt="Co-occurrence of the diagnostic subclasses" width="100%">
+</p>
+
+*Figure 4. Co-occurrence of the 23 diagnostic subclasses; the diagonal gives the number of records per subclass, lines separate the superclasses.*
+
+<p align="center">
+  <img src="eda/figures/fig12_top_overlapping_pairs.png" alt="Most frequent overlapping diagnostic subclasses" width="90%">
+</p>
+
+*Figure 5. The most frequent pairs of diagnostic subclasses; pairs across superclasses (orange) make the task multi-label.*
+
+#### Signals
+
+- **The classes differ visibly in the average heartbeat.** In single-label records without artefacts:
+  - HYP has a much larger R wave in V5 (median beat 2.10 mV, compared with 1.26 mV for NORM) and a deeper S wave in V2;
+  - STTC has flattened T waves;
+  - CD and MI have smaller R waves in V5 (0.73 and 0.93 mV).
+- **The six limb leads carry only two independent signals.** III, aVR, aVL and aVF are linear combinations of I and II (Einthoven's and Goldberger's equations), reproduced in the data with a median relative error below 0.6%. The six limb leads of E4 therefore contain the same information as leads I and II.
+- **The precordial leads have larger amplitudes.** Their median per-record standard deviation is 0.16–0.25 mV, compared with 0.10–0.13 mV for the limb leads, which motivates standardizing every lead separately. Absolute amplitudes stay below 2.2 mV in 99.9% of the samples, with outliers up to 20 mV.
+
+<p align="center">
+  <img src="eda/figures/fig03_example_ecg.png" alt="Example 12-lead record" width="100%">
+</p>
+
+*Figure 6. An example record (NORM): the 12 leads in the standard layout and lead II over the full 10 s.*
+
+<p align="center">
+  <img src="eda/figures/fig04_median_beats.png" alt="Median heartbeat per superclass" width="100%">
+</p>
+
+*Figure 7. Median heartbeat per superclass in leads II, V2 and V5, aligned at the R peak.*
+
+<p align="center">
+  <img src="eda/figures/fig07_lead_correlation.png" alt="Mean correlation between leads" width="45%">
+</p>
+
+*Figure 8. Mean correlation between the 12 leads.*
+
+<p align="center">
+  <img src="eda/figures/fig09_lead_amplitude.png" alt="Signal spread per lead" width="100%">
+</p>
+
+*Figure 9. Per-record standard deviation of each lead (median, 25–75% and 5–95% of the records).*
+
+#### Patients, recording quality and split
+
+- **Patients.** The records come from 18,885 patients (2,127 with several records, at most 10), recorded between 1984 and 2001. The median age is 62 years (range 2–95), and 52% of the patients are male. NORM patients are younger (median 54 years, compared with 67–68 for the other superclasses). MI, CD and HYP are more frequent in men (57–62% male, compared with 46% for NORM).
+- **Recording quality.** 30% of the records carry a quality flag: static noise (14.9%), extra beats (8.9%), baseline drift (7.4%), burst noise (2.8%), pacemaker (1.3%) and electrode problems (0.1%). Noise and baseline wander are therefore realistic augmentations (E3).
+- **Label certainty.** 74% of the diagnostic statements have a likelihood of 100%; the others range from 80% down to 15% or are unspecified, a source of label noise.
+- **Split.** Folds 9 and 10 (validation and test) contain only reports validated by a cardiologist, compared with about 67% in folds 1–8, so the evaluation labels are of higher quality than the training labels. Class prevalence varies by at most 2.6 percentage points between folds.
+
+<p align="center">
+  <img src="eda/figures/fig05_demographics.png" alt="Age and sex per superclass" width="100%">
+</p>
+
+*Figure 10. Age and share of male patients per superclass.*
+
+<p align="center">
+  <img src="eda/figures/fig06_quality_and_labels.png" alt="Quality flags, label certainty and human validation" width="100%">
+</p>
+
+*Figure 11. Quality flags, certainty of the diagnostic statements, and share of human-validated reports per fold.*
+
+<p align="center">
+  <img src="eda/figures/fig08_fold_balance.png" alt="Class prevalence per fold" width="100%">
+</p>
+
+*Figure 12. Class prevalence per fold of the official split.*
+
+</details>
 
 ---
 
@@ -153,18 +262,18 @@ This writes the figures to `eda/figures/` and `eda/figures/slides/`, and the sum
 
 All experiments use these settings (defined once in `src/config.py`, `STANDARD`) and change only the factor they study.
 
-| Setting | Value |
+| <small>Setting</small> | <small>Value</small> |
 |:--------|:------|
-| **Split** | official `strat_fold`: train 1–8 (17,111 records), val 9 (2,156), test 10 (2,163) |
-| **Input** | 100 Hz, 12 leads, full 10 s, per-lead standardization |
-| **Loss** | `BCEWithLogits`, 5 outputs |
-| **Optimizer** | AdamW [[5]](#references), weight decay 0.01, batch size 128 |
-| **Schedule** | one-cycle [[6]](#references), peak LR 1e-3, 30% warm-up, cosine decay |
-| **Epochs** | **50, fixed** (no early stopping) |
-| **Checkpoint** | epoch with the best **validation macro AUROC** |
-| **Seeds** | 0, 1, 2; results reported as mean ± std |
-| **Test metrics** | macro + per-class AUROC and AUPRC; macro + per-class F1 at 0.5 and at per-class thresholds tuned on validation; 95% percentile bootstrap CIs [[7]](#references) (1,000 resamples) |
-| **Precision** | bf16 autocast on GPU; runs are deterministic for a given seed and GPU |
+| <small>**Split**</small> | <small>official `strat_fold`: train 1–8 (17,111 records), val 9 (2,156), test 10 (2,163)</small> |
+| <small>**Input**</small> | <small>100 Hz, 12 leads, full 10 s, per-lead standardization</small> |
+| <small>**Loss**</small> | <small>`BCEWithLogits`, 5 outputs</small> |
+| <small>**Optimizer**</small> | <small>AdamW [[5]](#references), weight decay 0.01, batch size 128</small> |
+| <small>**Schedule**</small> | <small>one-cycle [[6]](#references), peak LR 1e-3, 30% warm-up, cosine decay</small> |
+| <small>**Epochs**</small> | <small>**50, fixed** (no early stopping)</small> |
+| <small>**Checkpoint**</small> | <small>epoch with the best **validation macro AUROC**</small> |
+| <small>**Seeds**</small> | <small>0, 1, 2; results reported as mean ± std</small> |
+| <small>**Test metrics**</small> | <small>macro + per-class AUROC and AUPRC; macro + per-class F1 at 0.5 and at per-class thresholds tuned on validation; 95% percentile bootstrap CIs [[7]](#references) (1,000 resamples)</small> |
+| <small>**Precision**</small> | <small>bf16 autocast on GPU; runs are deterministic for a given seed and GPU</small> |
 
 ---
 
@@ -173,6 +282,7 @@ All experiments use these settings (defined once in `src/config.py`, `STANDARD`)
 ```bash
 python -m src.training.train --exp scratch --model resnet1d18 --seeds 0   # one run
 python -m src.training.train --exp e4_leads --model resnet1d18 --leads limb6 --seeds 0 1 2
+python -m src.training.train_svm --exp b0_svm --features wavelet   # one SVM run (B0)
 python -m src.evaluation.evaluate --exp e1_depth     # re-evaluate + summarize
 python -m src.evaluation.summarize --exp e1_depth
 python -m src.visualize.plot_runs --exp e1_depth
@@ -180,57 +290,62 @@ python -m src.visualize.plot_runs --exp e1_depth
 
 Each run writes to `runs/<exp>/<model>_<fs>hz_<leads>[_aug-…]_s<seed>/`:
 
-| File | Content |
+| <small>File</small> | <small>Content</small> |
 |:-----|:--------|
-| `config.json` | every setting, parameter count, dataset sizes, git commit, best epoch, timing |
-| `history.csv` | one row per epoch: `lr`, `train_loss`, `val_loss`, and `{train,val}_{macro_auc,macro_ap,macro_f1}`, `{train,val}_{auc,ap,f1}_<CLASS>` |
-| `metrics.json` | val and test metrics of the best checkpoint, tuned thresholds, CIs |
-| `metrics_last.json` | the same for the last-epoch checkpoint (only if evaluated with `--checkpoint last`, e.g. in B0) |
-| `predictions.npz` | val/test `ecg_id`, labels and probabilities (for ROC/PR curves) |
-| `norm_stats.npz` | per-lead mean/std used for standardization |
-| `best.pt`, `last.pt` | weights (not tracked by git) |
+| <small>`config.json`</small> | <small>every setting, parameter count, dataset sizes, git commit, best epoch, timing</small> |
+| <small>`history.csv`</small> | <small>one row per epoch: `lr`, `train_loss`, `val_loss`, and `{train,val}_{macro_auc,macro_ap,macro_f1}`, `{train,val}_{auc,ap,f1}_<CLASS>`</small> |
+| <small>`metrics.json`</small> | <small>val and test metrics of the best checkpoint, tuned thresholds, CIs</small> |
+| <small>`metrics_last.json`</small> | <small>the same for the last-epoch checkpoint (only if evaluated with `--checkpoint last`, e.g. in B0)</small> |
+| <small>`predictions.npz`</small> | <small>val/test `ecg_id`, labels and probabilities (for ROC/PR curves)</small> |
+| <small>`norm_stats.npz`</small> | <small>per-lead mean/std used for standardization</small> |
+| <small>`best.pt`, `last.pt`</small> | <small>weights (not tracked by git)</small> |
 
 Per experiment: `runs/<exp>/runs.csv`, `summary.csv` / `summary.md` (mean ± std per variant) and `figures/`.
 
+SVM runs (`src/training/train_svm.py`) write `config.json`, `metrics.json` and `predictions.npz` in the same format, so summaries, figures and `age_analysis` work unchanged. They have no `history.csv`, normalization statistics or weights; `config.json` holds the selected C and γ and the validation score of every grid point.
+
 ---
 
-## Experiments
+## Baseline
 
-### B0: Can we reproduce a benchmark?
+<details>
+<summary><a id="b0-can-we-reproduce-a-benchmark"></a><h3 style="display:inline">B0: Can we reproduce a benchmark?</h3></summary>
 
 ```bash
 python -m src.experiments.b0_benchmark                  # resnet1d_wang, benchmark procedure, 3 seeds
 python -m src.experiments.b0_baseline                   # FCN, standard protocol, 3 seeds
 python -m src.evaluation.age_analysis --exp b0_baseline # performance by age and sex
+python -m src.experiments.b0_svm                        # SVM: statistical, wavelet and raw inputs
 ```
 
-B0 comprises two baselines of Wang et al. [[10]](#references), both part of the PTB-XL benchmark of Strodthoff et al. [[4]](#references):
+B0 comprises three baselines. The first two are networks of Wang et al. [[10]](#references), both part of the PTB-XL benchmark of Strodthoff et al. [[4]](#references); the third is a classical, non-deep model:
 
 1. `resnet1d_wang`, trained with the benchmark's training procedure, to verify that the pipeline reproduces a published result;
 2. the fully convolutional network (FCN), trained with the standard protocol, as a simple convolutional baseline for the subsequent experiments, together with an analysis of performance by age and sex.
+3. a support vector machine (SVM) on hand-crafted features and on the raw waveform, to quantify what learning from the signal adds over a classical feature-based approach.
 
 #### Reproduction of `resnet1d_wang`
 
 The `resnet1d_wang` model of the PTB-XL benchmark of Strodthoff et al. [[4]](#references), the 1D ResNet of Wang et al. [[10]](#references) as implemented in the benchmark code, is reimplemented in `src/models/resnet1d_wang.py`: a stem convolution (kernel size 7, stride 1, no pooling), three residual blocks of 128 channels with kernel sizes 5 and 3 and strides 1, 2 and 2, and a head of concatenated max and average pooling, batch-norm, dropout 0.25, a linear layer of 128 units, ReLU, batch-norm, dropout 0.5 and the output layer (0.47M parameters). It is trained with the training procedure of the benchmark, which differs from the standard protocol in the following points:
 
-| Setting | Benchmark procedure (B0) | Standard protocol |
+| <small>Setting</small> | <small>Benchmark procedure (B0)</small> | <small>Standard protocol</small> |
 |:--------|:-------------------------|:------------------|
-| **Training input** | random 2.5 s crop of each record | full 10 s record |
-| **Evaluation** | 7 windows of 2.5 s (stride 1.25 s), per-class maximum | full 10 s record |
-| **Peak learning rate** | 1e-2 | 1e-3 |
-| **Adam β₂** | 0.99 | 0.999 |
-| **Standardization** | one global mean/std over all leads | one mean/std per lead |
-| **Checkpoint** | final epoch | epoch with the best validation macro AUROC |
+| <small>**Training input**</small> | <small>random 2.5 s crop of each record</small> | <small>full 10 s record</small> |
+| <small>**Evaluation**</small> | <small>7 windows of 2.5 s (stride 1.25 s), per-class maximum</small> | <small>full 10 s record</small> |
+| <small>**Peak learning rate**</small> | <small>1e-2</small> | <small>1e-3</small> |
+| <small>**Adam β₂**</small> | <small>0.99</small> | <small>0.999</small> |
+| <small>**Standardization**</small> | <small>one global mean/std over all leads</small> | <small>one mean/std per lead</small> |
+| <small>**Checkpoint**</small> | <small>final epoch</small> | <small>epoch with the best validation macro AUROC</small> |
 
 All other settings (100 Hz, 12 leads, official split, BCE loss, AdamW with weight decay 0.01, one-cycle schedule, 50 epochs, batch size 128) are shared. Both checkpoints are evaluated: the final epoch, which is the benchmark's procedure, and the best validation epoch, which is the selection used in all other experiments.
 
 *resnet1d_wang, test set (fold 10), mean ± std over 3 seeds:*
 
-| Checkpoint | Macro AUROC | Macro AUPRC | Macro F1 @0.5 | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+| <small>Checkpoint</small> | <small>Macro AUROC</small> | <small>Macro AUPRC</small> | <small>Macro F1 @0.5</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:-----------|------------:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
-| Published value [[4]](#references) | 0.930 | | | | | | | | |
-| **Final epoch** (benchmark procedure) | **0.9299 ± 0.0010** | 0.8292 ± 0.0034 | 0.7510 ± 0.0032 | 0.7530 ± 0.0057 | 0.9490 | 0.9359 | 0.9326 | 0.9263 | 0.9058 |
-| **Best validation epoch** | **0.9324 ± 0.0011** | 0.8369 ± 0.0013 | 0.7557 ± 0.0034 | 0.7577 ± 0.0049 | 0.9490 | 0.9395 | 0.9346 | 0.9295 | 0.9093 |
+| <small>Published value [[4]](#references)</small> | <small>$\colorbox{#F9CCC7}{0.930}$</small> | | | | | | | | |
+| <small>**Final epoch** (benchmark procedure)</small> | <small>$\colorbox{#F8C9C9}{0.9299 ± 0.0010}$</small> | <small>$\colorbox{#F8C9C9}{0.8292 ± 0.0034}$</small> | <small>$\colorbox{#F8C9C9}{0.7510 ± 0.0032}$</small> | <small>$\colorbox{#F8C9C9}{0.7530 ± 0.0057}$</small> | <small>0.9490</small> | <small>$\colorbox{#F8C9C9}{0.9359}$</small> | <small>$\colorbox{#F8C9C9}{0.9326}$</small> | <small>$\colorbox{#F8C9C9}{0.9263}$</small> | <small>$\colorbox{#F8C9C9}{0.9058}$</small> |
+| <small>**Best validation epoch**</small> | <small>$\colorbox{#C6EFCE}{0.9324 ± 0.0011}$</small> | <small>$\colorbox{#C6EFCE}{0.8369 ± 0.0013}$</small> | <small>$\colorbox{#C6EFCE}{0.7557 ± 0.0034}$</small> | <small>$\colorbox{#C6EFCE}{0.7577 ± 0.0049}$</small> | <small>0.9490</small> | <small>$\colorbox{#C6EFCE}{0.9395}$</small> | <small>$\colorbox{#C6EFCE}{0.9346}$</small> | <small>$\colorbox{#C6EFCE}{0.9295}$</small> | <small>$\colorbox{#C6EFCE}{0.9093}$</small> |
 
 (NORM … HYP: per-class test AUROC.)
 
@@ -256,10 +371,10 @@ The fully convolutional network (FCN) of Wang et al. [[10]](#references) (`src/m
 
 *Test set (fold 10), mean ± std over 3 seeds:*
 
-| Model | Params | Macro AUROC | Macro AUPRC | Macro F1 @0.5 | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+| <small>Model</small> | <small>Params</small> | <small>Macro AUROC</small> | <small>Macro AUPRC</small> | <small>Macro F1 @0.5</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:------|-------:|------------:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
-| **FCN (B0)** | 0.28M | **0.9192 ± 0.0013** | 0.8065 ± 0.0012 | 0.7231 ± 0.0055 | 0.7368 ± 0.0035 | 0.9395 | 0.9232 | 0.9322 | 0.9063 | 0.8947 |
-| `fcn_wang`, benchmark [[4]](#references) | – | 0.925 | – | – | – | – | – | – | – | – |
+| <small>**FCN (B0)**</small> | <small>0.28M</small> | <small>$\colorbox{#F8C9C9}{0.9192 ± 0.0013}$</small> | <small>0.8065 ± 0.0012</small> | <small>0.7231 ± 0.0055</small> | <small>0.7368 ± 0.0035</small> | <small>0.9395</small> | <small>0.9232</small> | <small>0.9322</small> | <small>0.9063</small> | <small>0.8947</small> |
+| <small>`fcn_wang`, benchmark [[4]](#references)</small> | <small>–</small> | <small>$\colorbox{#C6EFCE}{0.925}$</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> |
 
 - **Close to the published value.** The macro AUROC (0.919) is 0.006 below the 0.925 reported for `fcn_wang` [[4]](#references). The difference in training procedure is the most likely cause: random 2.5 s crops alone improve ResNet1D-10 by 0.016 (E3), and `resnet1d_wang` reproduces its published value when trained with the benchmark's procedure (above). The three seeds give 0.9184, 0.9185 and 0.9206, and re-running a seed reproduces its result exactly.
 
@@ -273,13 +388,13 @@ The fully convolutional network (FCN) of Wang et al. [[10]](#references) (`src/m
 
 *Test set (fold 10), macro AUROC, mean ± std over 3 seeds, 95% bootstrap CI (B0); 15 test records without age are left out of the age groups:*
 
-| Age | n | % NORM | FCN (B0) | 95% CI | ResNet1D-18 | ResNet1D-34 |
+| <small>Age</small> | <small>n</small> | <small>% NORM</small> | <small>FCN (B0)</small> | <small>95% CI</small> | <small>ResNet1D-18</small> | <small>ResNet1D-34</small> |
 |:----|--:|-------:|---------:|:------:|------------:|------------:|
-| <40 | 284 | 83.1 | 0.9225 ± 0.0054 | [0.890, 0.949] | 0.8988 | 0.9033 |
-| 40–59 | 642 | 60.4 | 0.9159 ± 0.0019 | [0.899, 0.931] | 0.9076 | 0.9070 |
-| 60–79 | 916 | 34.8 | 0.9099 ± 0.0011 | [0.899, 0.921] | 0.9031 | 0.9042 |
-| 80+ | 306 | 6.9 | **0.8734 ± 0.0010** | [0.848, 0.895] | 0.8679 | 0.8652 |
-| all | 2163 | 44.6 | 0.9192 ± 0.0013 | [0.912, 0.926] | 0.9127 | 0.9131 |
+| <small><40</small> | <small>284</small> | <small>83.1</small> | <small>$\colorbox{#C6EFCE}{0.9225 ± 0.0054}$</small> | <small>[0.890, 0.949]</small> | <small>$\colorbox{#E9F1BD}{0.8988}$</small> | <small>$\colorbox{#DDF0C3}{0.9033}$</small> |
+| <small>40–59</small> | <small>642</small> | <small>60.4</small> | <small>$\colorbox{#D5F0C7}{0.9159 ± 0.0019}$</small> | <small>[0.899, 0.931]</small> | <small>$\colorbox{#D3F0C8}{0.9076}$</small> | <small>$\colorbox{#D5F0C7}{0.9070}$</small> |
+| <small>60–79</small> | <small>916</small> | <small>34.8</small> | <small>$\colorbox{#E3F1C0}{0.9099 ± 0.0011}$</small> | <small>[0.899, 0.921]</small> | <small>$\colorbox{#DEF0C2}{0.9031}$</small> | <small>$\colorbox{#DBF0C4}{0.9042}$</small> |
+| <small>80+</small> | <small>306</small> | <small>6.9</small> | <small>$\colorbox{#F8C9C9}{0.8734 ± 0.0010}$</small> | <small>[0.848, 0.895]</small> | <small>$\colorbox{#F8C9C9}{0.8679}$</small> | <small>$\colorbox{#F8C9C9}{0.8652}$</small> |
+| <small>all</small> | <small>2163</small> | <small>44.6</small> | <small>$\colorbox{#CEEFCA}{0.9192 ± 0.0013}$</small> | <small>[0.912, 0.926]</small> | <small>$\colorbox{#C6EFCE}{0.9127}$</small> | <small>$\colorbox{#C6EFCE}{0.9131}$</small> |
 
 - **Performance drops for patients aged 80+** for all three models; for B0 the 95% CI of this group does not overlap with that of the whole test set. In this group only 6.9% of the records are normal and most carry several superclasses at once (MI 46.7%, STTC 42.8%, CD 42.2%), so co-occurring pathologies have to be separated. HYP is affected most (AUROC 0.818 for B0 at 80+).
 - **Results for patients under 40 are uncertain:** the group contains few abnormal records (e.g. 7 MI cases), which gives a wide CI.
@@ -294,7 +409,57 @@ The fully convolutional network (FCN) of Wang et al. [[10]](#references) (`src/m
   <img src="runs/b0_baseline/subgroups/figures/age_auc_per_class.png" alt="B0 per-class test AUROC by age" width="49%">
 </p>
 
-### E1: Does depth help? ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34
+#### Classical baseline: support vector machine
+
+A support vector machine (SVM) with an RBF kernel [[21]](#references) is trained on three input representations, taken from the SVM notebooks of the project (`src/models/SVM*.ipynb`, kept for reference) and reimplemented in the standard pipeline (`src/features/ecg_features.py`, `src/training/train_svm.py`):
+
+| <small>Input</small> | <small>Per lead</small> | <small>Inputs (12 leads)</small> | <small>Content</small> |
+|:------|---------:|------------------:|:--------|
+| <small>**Statistical features**</small> | <small>39</small> | <small>468</small> | <small>amplitude statistics and percentiles, distribution shape, first and second differences, Hjorth parameters, Welch power-spectrum descriptors; no beat detection</small> |
+| <small>**ECG + wavelet features**</small> | <small>62</small> | <small>744</small> | <small>the same kind of statistics after band-pass filtering, approximate R-peaks and RR intervals, a median heartbeat summarized before, around and after the QRS complex, and a 4-level Daubechies-4 wavelet decomposition</small> |
+| <small>**Raw waveform**</small> | <small>1,000</small> | <small>12,000</small> | <small>every sample of the 10 s record</small> |
+
+**Model and selection.**
+- Inputs are z-scored with training statistics. One binary SVM is trained per superclass (one-vs-rest, balanced class weights), all sharing C and γ.
+- The grid, the same for all three inputs, is C ∈ {0.25, 1, 4, 16, 64} × γ ∈ {0.125, 0.25, …, 8} × γ<sub>scale</sub>, with γ<sub>scale</sub> = 1 / (n<sub>inputs</sub> · Var(X<sub>train</sub>)), scikit-learn's "scale". The configuration with the highest validation macro AUROC is selected; every selected configuration lies inside the grid.
+- Class probabilities are the sigmoid of the decision function.
+- The RBF kernel is computed on the GPU and passed to libsvm as a precomputed kernel. This is the same model, but fast enough for the 12,000-dimensional raw input (about 2 min per input for the whole grid).
+- The SVM has no random component, so one run per input is reported, with 95% bootstrap confidence intervals; a second seed reproduced the predictions exactly.
+
+**Differences from the original notebooks.** The SVM is trained and evaluated on the same records as all other models: PTB-XL v1.0.1, official split, records without a superclass label dropped. The notebooks used v1.0.3 and kept the unlabeled records. Selection uses macro AUROC instead of macro F1. The feature code is unchanged and gives identical values on 40 ECGs × 12 leads; only the wavelet decomposition (`pywt.wavedec`) was reimplemented in NumPy, because the compiled PyWavelets extension could not be loaded on the training machine.
+
+*Test set (fold 10). SVM: one run per input, 95% bootstrap CI; FCN: mean ± std over 3 seeds.*
+
+| <small>Model</small> | <small>Inputs</small> | <small>Macro AUROC</small> | <small>Macro AUPRC</small> | <small>Macro F1 @0.5</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
+|:------|-------:|------------:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
+| <small>SVM, statistical features</small> | <small>468</small> | <small>$\colorbox{#DBF0C4}{0.8884 [0.880, 0.897]}$</small> | <small>$\colorbox{#DDF0C3}{0.7419}$</small> | <small>$\colorbox{#CFEFCA}{0.6845}$</small> | <small>$\colorbox{#E1F0C1}{0.6816}$</small> | <small>$\colorbox{#DCF0C3}{0.9117}$</small> | <small>$\colorbox{#EAF1BD}{0.8561}$</small> | <small>$\colorbox{#D5F0C7}{0.9044}$</small> | <small>$\colorbox{#DBF0C4}{0.8703}$</small> | <small>$\colorbox{#CAEFCC}{0.8995}$</small> |
+| <small>**SVM, ECG + wavelet features**</small> | <small>744</small> | <small>$\colorbox{#D1F0C9}{0.9031 [0.896, 0.911]}$</small> | <small>$\colorbox{#D3F0C8}{0.7696}$</small> | <small>$\colorbox{#CAEFCC}{0.7068}$</small> | <small>$\colorbox{#CFEFCA}{0.7171}$</small> | <small>$\colorbox{#D3F0C8}{0.9232}$</small> | <small>$\colorbox{#E2F0C1}{0.8702}$</small> | <small>$\colorbox{#C9EFCD}{0.9264}$</small> | <small>$\colorbox{#CEEFCA}{0.8931}$</small> | <small>$\colorbox{#C6EFCE}{0.9027}$</small> |
+| <small>SVM, raw waveform</small> | <small>12,000</small> | <small>$\colorbox{#F8C9C9}{0.7488 [0.737, 0.761]}$</small> | <small>$\colorbox{#F8C9C9}{0.4874}$</small> | <small>$\colorbox{#F8C9C9}{0.2089}$</small> | <small>$\colorbox{#F8C9C9}{0.4994}$</small> | <small>$\colorbox{#F8C9C9}{0.7983}$</small> | <small>$\colorbox{#F8C9C9}{0.7102}$</small> | <small>$\colorbox{#F8C9C9}{0.7164}$</small> | <small>$\colorbox{#F8C9C9}{0.7150}$</small> | <small>$\colorbox{#F8C9C9}{0.8040}$</small> |
+| <small>FCN (above)</small> | <small>–</small> | <small>$\colorbox{#C6EFCE}{0.9192 ± 0.0013}$</small> | <small>$\colorbox{#C6EFCE}{0.8065}$</small> | <small>$\colorbox{#C6EFCE}{0.7231}$</small> | <small>$\colorbox{#C6EFCE}{0.7368}$</small> | <small>$\colorbox{#C6EFCE}{0.9395}$</small> | <small>$\colorbox{#C6EFCE}{0.9232}$</small> | <small>$\colorbox{#C6EFCE}{0.9322}$</small> | <small>$\colorbox{#C6EFCE}{0.9063}$</small> | <small>$\colorbox{#CFEFCA}{0.8947}$</small> |
+| <small>`Wavelet+NN`, benchmark [[4]](#references)</small> | <small>–</small> | <small>$\colorbox{#E4F1C0}{0.874}$</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> | <small>–</small> |
+
+- **Learning from the signal outperforms hand-crafted features.** The best SVM (ECG + wavelet features, 0.903) lies 0.016 below the FCN trained with the standard protocol. In a paired bootstrap on the test set, the FCN is better by 0.015–0.018 on each seed, with all 95% confidence intervals above zero. It lies 0.027 below `resnet1d_wang` (0.930). It is above the classical baseline of the benchmark (`Wavelet+NN`, 0.874) [[4]](#references).
+
+- **ECG-specific features help.** Beat-level information (R-peaks, RR intervals, median heartbeat) and the wavelet decomposition raise macro AUROC by 0.015 over purely statistical features (paired bootstrap: 95% CI [0.010, 0.019]). The largest gains are for CD (+0.023), STTC (+0.022) and MI (+0.014).
+
+- **The gap to the neural network is largest for MI, while HYP is on par.** For MI the SVM reaches 0.870, compared with 0.923 for the FCN; for HYP it reaches 0.903, compared with 0.895. A plausible explanation: hypertrophy is largely defined by voltage criteria, i.e. amplitudes that the features measure directly. Myocardial infarction, by contrast, shows in the shape of specific waves (Q waves, ST segment) in specific leads, which summary statistics capture only partly.
+
+- **An SVM on the raw waveform does not generalize (0.749).** The RBF kernel compares two ECGs sample by sample, so the same heartbeat shifted by a fraction of a second appears dissimilar. Almost every training record becomes a support vector (11,380–16,850 of 17,111 per class): the model memorizes the training set rather than learning a decision rule. A representation is needed, either hand-crafted features or the learned, shift-equivariant filters of a convolutional network.
+
+- **The results are consistent with the original notebooks.** Macro F1 at tuned thresholds is 0.682 for the statistical features and 0.499 for the raw waveform, compared with 0.675 and 0.496 in the notebooks on PTB-XL v1.0.3.
+
+<p align="center">
+  <img src="runs/b0_svm/figures/test_auc_per_class.png" alt="B0 SVM test AUROC per class" width="60%">
+</p>
+
+</details>
+
+---
+
+## Experiments
+
+<details>
+<summary><a id="e1-does-depth-help-resnet1d-10-vs-resnet1d-18-vs-resnet1d-34"></a><h3 style="display:inline">E1: Does depth help? ResNet1D-10 vs ResNet1D-18 vs ResNet1D-34</h3></summary>
 
 ```bash
 python -m src.experiments.e1_depth
@@ -306,11 +471,11 @@ All three networks are the ResNet layout [[8]](#references) carried over to 1D (
 
 *Test set (fold 10), mean ± std over 3 seeds:*
 
-| Model | Params | Train time | Macro AUROC | Macro AUPRC | Macro F1 @0.5 | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+| <small>Model</small> | <small>Params</small> | <small>Train time</small> | <small>Macro AUROC</small> | <small>Macro AUPRC</small> | <small>Macro F1 @0.5</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:------|-------:|-----------:|------------:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
-| **ResNet1D-10** | 2.8M | 33 s | **0.9121 ± 0.0007** | 0.7960 ± 0.0016 | 0.6996 ± 0.0231 | 0.7232 ± 0.0045 | 0.9350 | 0.9020 | 0.9270 | 0.9010 | 0.8952 |
-| **ResNet1D-18** | 6.3M | 53 s | **0.9127 ± 0.0017** | 0.7978 ± 0.0036 | 0.7049 ± 0.0160 | 0.7255 ± 0.0066 | 0.9356 | 0.9049 | 0.9283 | 0.8995 | 0.8951 |
-| **ResNet1D-34** | 11.9M | 94 s | **0.9131 ± 0.0017** | 0.7973 ± 0.0040 | 0.6926 ± 0.0098 | 0.7239 ± 0.0053 | 0.9368 | 0.9044 | 0.9264 | 0.9036 | 0.8942 |
+| <small>**ResNet1D-10**</small> | <small>2.8M</small> | <small>33 s</small> | <small>$\colorbox{#F8C9C9}{0.9121 ± 0.0007}$</small> | <small>$\colorbox{#F8C9C9}{0.7960 ± 0.0016}$</small> | <small>$\colorbox{#F7F2B7}{0.6996 ± 0.0231}$</small> | <small>$\colorbox{#F8C9C9}{0.7232 ± 0.0045}$</small> | <small>$\colorbox{#F8C9C9}{0.9350}$</small> | <small>$\colorbox{#F8C9C9}{0.9020}$</small> | <small>$\colorbox{#FCE3BB}{0.9270}$</small> | <small>$\colorbox{#FDE7B9}{0.9010}$</small> | <small>$\colorbox{#C6EFCE}{0.8952}$</small> |
+| <small>**ResNet1D-18**</small> | <small>6.3M</small> | <small>53 s</small> | <small>$\colorbox{#F4F1B8}{0.9127 ± 0.0017}$</small> | <small>$\colorbox{#C6EFCE}{0.7978 ± 0.0036}$</small> | <small>$\colorbox{#C6EFCE}{0.7049 ± 0.0160}$</small> | <small>$\colorbox{#C6EFCE}{0.7255 ± 0.0066}$</small> | <small>$\colorbox{#FDE4BA}{0.9356}$</small> | <small>$\colorbox{#C6EFCE}{0.9049}$</small> | <small>$\colorbox{#C6EFCE}{0.9283}$</small> | <small>$\colorbox{#F8C9C9}{0.8995}$</small> | <small>$\colorbox{#D1F0C9}{0.8951}$</small> |
+| <small>**ResNet1D-34**</small> | <small>11.9M</small> | <small>94 s</small> | <small>$\colorbox{#C6EFCE}{0.9131 ± 0.0017}$</small> | <small>$\colorbox{#E6F1BF}{0.7973 ± 0.0040}$</small> | <small>$\colorbox{#F8C9C9}{0.6926 ± 0.0098}$</small> | <small>$\colorbox{#FCE2BC}{0.7239 ± 0.0053}$</small> | <small>$\colorbox{#C6EFCE}{0.9368}$</small> | <small>$\colorbox{#DAF0C5}{0.9044}$</small> | <small>$\colorbox{#F8C9C9}{0.9264}$</small> | <small>$\colorbox{#C6EFCE}{0.9036}$</small> | <small>$\colorbox{#F8C9C9}{0.8942}$</small> |
 
 (Train time: 50 epochs on an RTX 5080. NORM … HYP: per-class test AUROC.)
 
@@ -326,7 +491,10 @@ All three networks are the ResNet layout [[8]](#references) carried over to 1D (
   <img src="runs/e1_depth/figures/curves.png" alt="E1 learning curves" width="100%">
 </p>
 
-### E2: Which operation type fits ECG? Convolution vs BiLSTM vs CNN + Transformer
+</details>
+
+<details>
+<summary><a id="e2-which-operation-type-fits-ecg-convolution-vs-bilstm-vs-cnn--transformer"></a><h3 style="display:inline">E2: Which operation type fits ECG? Convolution vs BiLSTM vs CNN + Transformer</h3></summary>
 
 ```bash
 python -m src.experiments.e2_operation                             # 6 models x 3 seeds
@@ -336,11 +504,11 @@ python -m src.experiments.e2_operation --report-only --show-test   # final repor
 
 The three model families differ only in the operation that processes the signal over time. Everything else is shared: the standard protocol with random crop (E3), the evaluation (maximum over the sliding windows), and the classifier on the pooled features (the MLP of the concatenated-pooling head, S1).
 
-| Family | Operation over time | Implementation |
+| <small>Family</small> | <small>Operation over time</small> | <small>Implementation</small> |
 |:-------|:--------------------|:---------------|
-| **Convolution** | stacked local filters; the receptive field grows with depth | ResNet of S1/S2 (`resnet1d_plus`): stride-1 stem, four residual stages, downsampling ×8 |
-| **BiLSTM** | recurrence: the 12 lead values of each time step are read in sequence, forwards and backwards [[17]](#references) [[18]](#references); no convolutions | two stacked bidirectional LSTM layers on the raw signal, following the recurrent model of the benchmark [[4]](#references); outputs pooled by average, maximum and the final state of each direction; recurrence computed in float32 (see below) |
-| **CNN + Transformer** | local convolutions, then self-attention between all positions [[19]](#references) | the ResNet stem and two strided residual blocks (63 tokens per 2.5 s window), sinusoidal position encoding, pre-norm Transformer encoder [[20]](#references) |
+| <small>**Convolution**</small> | <small>stacked local filters; the receptive field grows with depth</small> | <small>ResNet of S1/S2 (`resnet1d_plus`): stride-1 stem, four residual stages, downsampling ×8</small> |
+| <small>**BiLSTM**</small> | <small>recurrence: the 12 lead values of each time step are read in sequence, forwards and backwards [[17]](#references) [[18]](#references); no convolutions</small> | <small>two stacked bidirectional LSTM layers on the raw signal, following the recurrent model of the benchmark [[4]](#references); outputs pooled by average, maximum and the final state of each direction; recurrence computed in float32 (see below)</small> |
+| <small>**CNN + Transformer**</small> | <small>local convolutions, then self-attention between all positions [[19]](#references)</small> | <small>the ResNet stem and two strided residual blocks (63 tokens per 2.5 s window), sinusoidal position encoding, pre-norm Transformer encoder [[20]](#references)</small> |
 
 **Sizes and selection.** Every family is trained in two sizes, small (0.6–0.8M parameters) and large (2.3–5.5M), so that a poorly chosen size does not decide the comparison.
 - The large BiLSTM (hidden size 256, two layers) has the size of the benchmark's recurrent model.
@@ -353,14 +521,14 @@ Within each family the size with the higher mean validation macro AUROC is selec
 
 *Mean ± std over 3 seeds; test set (fold 10). Selected size per family in bold. Train time: 50 epochs on an RTX 5080.*
 
-| Family | Model | Params | Train time | Val macro AUROC | Test macro AUROC | Macro AUPRC | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+| <small>Family</small> | <small>Model</small> | <small>Params</small> | <small>Train time</small> | <small>Val macro AUROC</small> | <small>Test macro AUROC</small> | <small>Macro AUPRC</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:-------|:------|-------:|-----------:|----------------:|-----------------:|------------:|----------------:|-----:|---:|-----:|---:|----:|
-| Convolution | ResNet, small (`base`) | 0.75M | 37 s | 0.9339 ± 0.0004 | 0.9305 ± 0.0019 | 0.8317 | 0.755 | 0.9489 | 0.9379 | 0.9350 | 0.9274 | 0.9031 |
-| | **ResNet, large** | 5.5M | 96 s | **0.9345 ± 0.0007** | **0.9313 ± 0.0004** | 0.8314 | 0.753 | 0.9491 | 0.9375 | 0.9345 | 0.9274 | 0.9079 |
-| BiLSTM | small (hidden 128) | 0.64M | 213 s | 0.9310 ± 0.0006 | 0.9284 ± 0.0009 | 0.8229 | 0.748 | 0.9474 | 0.9363 | 0.9333 | 0.9199 | 0.9052 |
-| | **large (hidden 256)** | 2.3M | 1001 s | **0.9314 ± 0.0008** | **0.9264 ± 0.0009** | 0.8202 | 0.753 | 0.9459 | 0.9314 | 0.9332 | 0.9196 | 0.9022 |
-| CNN + Transformer | small (d 128, 2 layers) | 0.80M | 49 s | 0.9313 ± 0.0003 | 0.9268 ± 0.0013 | 0.8180 | 0.748 | 0.9470 | 0.9318 | 0.9323 | 0.9237 | 0.8990 |
-| | **large (d 256, 4 layers)** | 4.7M | 86 s | **0.9323 ± 0.0010** | **0.9290 ± 0.0011** | 0.8207 | 0.752 | 0.9478 | 0.9343 | 0.9318 | 0.9237 | 0.9073 |
+| <small>Convolution</small> | <small>ResNet, small (`base`)</small> | <small>0.75M</small> | <small>37 s</small> | <small>$\colorbox{#DAF0C5}{0.9339 ± 0.0004}$</small> | <small>$\colorbox{#D9F0C5}{0.9305 ± 0.0019}$</small> | <small>$\colorbox{#C6EFCE}{0.8317}$</small> | <small>$\colorbox{#C6EFCE}{0.755}$</small> | <small>$\colorbox{#CDEFCB}{0.9489}$</small> | <small>$\colorbox{#C6EFCE}{0.9379}$</small> | <small>$\colorbox{#C6EFCE}{0.9350}$</small> | <small>$\colorbox{#C6EFCE}{0.9274}$</small> | <small>$\colorbox{#FEEFB5}{0.9031}$</small> |
+| | <small>**ResNet, large**</small> | <small>5.5M</small> | <small>96 s</small> | <small>$\colorbox{#C6EFCE}{0.9345 ± 0.0007}$</small> | <small>$\colorbox{#C6EFCE}{0.9313 ± 0.0004}$</small> | <small>$\colorbox{#C8EFCD}{0.8314}$</small> | <small>$\colorbox{#E7F1BF}{0.753}$</small> | <small>$\colorbox{#C6EFCE}{0.9491}$</small> | <small>$\colorbox{#CDEFCB}{0.9375}$</small> | <small>$\colorbox{#D8F0C6}{0.9345}$</small> | <small>$\colorbox{#C6EFCE}{0.9274}$</small> | <small>$\colorbox{#C6EFCE}{0.9079}$</small> |
+| <small>BiLSTM</small> | <small>small (hidden 128)</small> | <small>0.64M</small> | <small>213 s</small> | <small>$\colorbox{#F8C9C9}{0.9310 ± 0.0006}$</small> | <small>$\colorbox{#FEEAB7}{0.9284 ± 0.0009}$</small> | <small>$\colorbox{#FDE6B9}{0.8229}$</small> | <small>$\colorbox{#F8C9C9}{0.748}$</small> | <small>$\colorbox{#FFEFB4}{0.9474}$</small> | <small>$\colorbox{#E2F0C1}{0.9363}$</small> | <small>$\colorbox{#FFEFB4}{0.9333}$</small> | <small>$\colorbox{#F9CCC7}{0.9199}$</small> | <small>$\colorbox{#E9F1BE}{0.9052}$</small> |
+| | <small>**large (hidden 256)**</small> | <small>2.3M</small> | <small>1001 s</small> | <small>$\colorbox{#FAD2C4}{0.9314 ± 0.0008}$</small> | <small>$\colorbox{#F8C9C9}{0.9264 ± 0.0009}$</small> | <small>$\colorbox{#FAD6C2}{0.8202}$</small> | <small>$\colorbox{#E7F1BF}{0.753}$</small> | <small>$\colorbox{#F8C9C9}{0.9459}$</small> | <small>$\colorbox{#F8C9C9}{0.9314}$</small> | <small>$\colorbox{#FEEDB6}{0.9332}$</small> | <small>$\colorbox{#F8C9C9}{0.9196}$</small> | <small>$\colorbox{#FDE6B9}{0.9022}$</small> |
+| <small>CNN + Transformer</small> | <small>small (d 128, 2 layers)</small> | <small>0.80M</small> | <small>49 s</small> | <small>$\colorbox{#F9D0C5}{0.9313 ± 0.0003}$</small> | <small>$\colorbox{#F9D0C5}{0.9268 ± 0.0013}$</small> | <small>$\colorbox{#F8C9C9}{0.8180}$</small> | <small>$\colorbox{#F8C9C9}{0.748}$</small> | <small>$\colorbox{#FDE5BA}{0.9470}$</small> | <small>$\colorbox{#F9CEC6}{0.9318}$</small> | <small>$\colorbox{#FAD6C2}{0.9323}$</small> | <small>$\colorbox{#FCF2B4}{0.9237}$</small> | <small>$\colorbox{#F8C9C9}{0.8990}$</small> |
+| | <small>**large (d 256, 4 layers)**</small> | <small>4.7M</small> | <small>86 s</small> | <small>$\colorbox{#FDE7B9}{0.9323 ± 0.0010}$</small> | <small>$\colorbox{#FCF2B5}{0.9290 ± 0.0011}$</small> | <small>$\colorbox{#FBD9C0}{0.8207}$</small> | <small>$\colorbox{#F7F2B7}{0.752}$</small> | <small>$\colorbox{#F4F1B8}{0.9478}$</small> | <small>$\colorbox{#FEEEB5}{0.9343}$</small> | <small>$\colorbox{#F8C9C9}{0.9318}$</small> | <small>$\colorbox{#FCF2B4}{0.9237}$</small> | <small>$\colorbox{#CEEFCA}{0.9073}$</small> |
 
 (NORM … HYP: per-class test AUROC. The ResNet runs are identical to `base` and `w256d2dp` of S2.)
 
@@ -384,11 +552,11 @@ Within each family the size with the higher mean validation macro AUROC is selec
 
 - **The sequence models overfit more towards the end of training.** Under the same 50-epoch schedule, validation macro AUROC falls from its best epoch to the last epoch by 0.006 for the large BiLSTM and 0.005 for the large CNN + Transformer, but only 0.002–0.003 for the ResNets. Their validation loss also rises more:
 
-  | Model | Best validation loss | At epoch 50 |
+  | <small>Model</small> | <small>Best validation loss</small> | <small>At epoch 50</small> |
   |:------|--------------------:|------------:|
-  | BiLSTM, large | 0.29 | 0.34 |
-  | CNN + Transformer, large | 0.30 | 0.35 |
-  | ResNet, large | 0.28 | 0.31 |
+  | <small>BiLSTM, large</small> | <small>0.29</small> | <small>0.34</small> |
+  | <small>CNN + Transformer, large</small> | <small>0.30</small> | <small>0.35</small> |
+  | <small>ResNet, large</small> | <small>0.28</small> | <small>0.31</small> |
 
   The best-validation checkpoint absorbs this. Still, the augmentation selected for the ResNet in E3 may not be the best one for the other two families; E3 is to be repeated for them.
 
@@ -402,7 +570,10 @@ Convolution is therefore kept as the operation type for the remaining experiment
   <img src="runs/e2_operation/figures/curves.png" alt="E2 learning curves" width="100%">
 </p>
 
-### E3: Which augmentations help? None vs noise, baseline wander, scaling, time shift, random crop
+</details>
+
+<details>
+<summary><a id="e3-which-augmentations-help-none-vs-noise-baseline-wander-scaling-time-shift-random-crop"></a><h3 style="display:inline">E3: Which augmentations help? None vs noise, baseline wander, scaling, time shift, random crop</h3></summary>
 
 ```bash
 python -m src.experiments.e3_augment                      # ResNet1D-10
@@ -411,14 +582,14 @@ python -m src.experiments.e3_augment --models <model>     # further models, same
 
 ResNet1D-10, the reference model selected in E1, is trained with the standard protocol under seven conditions: no augmentation, each of the five augmentations alone, and all five combined. Noise, baseline wander, scaling and time shift are applied independently to each training record with probability 0.5. Random crop is applied to every training record, since all inputs of a batch must have the same length, and always after the other augmentations. Validation and test data are never augmented. Amplitudes are given in units of the per-lead standard deviation, since augmentation is applied after standardization.
 
-| Augmentation | Definition |
+| <small>Augmentation</small> | <small>Definition</small> |
 |:-------------|:-----------|
-| **Noise** | additive Gaussian noise, σ ~ U(0.05, 0.15) (SNR ≈ 16–26 dB) |
-| **Baseline wander** | per-lead sinusoid, 0.05–0.5 Hz, amplitude ~ U(0.1, 0.5), random phase |
-| **Scaling** | one amplitude factor per record, ~ U(0.8, 1.2) |
-| **Time shift** | circular shift of all leads by up to ± 1 s |
-| **Random crop** | random 2.5 s window of each record (the crop length of the benchmark [[4]](#references)) |
-| **All combined** | the five above: the first four each with its own probability 0.5, followed by the crop |
+| <small>**Noise**</small> | <small>additive Gaussian noise, σ ~ U(0.05, 0.15) (SNR ≈ 16–26 dB)</small> |
+| <small>**Baseline wander**</small> | <small>per-lead sinusoid, 0.05–0.5 Hz, amplitude ~ U(0.1, 0.5), random phase</small> |
+| <small>**Scaling**</small> | <small>one amplitude factor per record, ~ U(0.8, 1.2)</small> |
+| <small>**Time shift**</small> | <small>circular shift of all leads by up to ± 1 s</small> |
+| <small>**Random crop**</small> | <small>random 2.5 s window of each record (the crop length of the benchmark [[4]](#references))</small> |
+| <small>**All combined**</small> | <small>the five above: the first four each with its own probability 0.5, followed by the crop</small> |
 
 A model trained on random crops only ever sees 2.5 s inputs, so it is also validated and tested on 2.5 s inputs: each 10 s record is divided into 7 overlapping windows (stride 1.25 s), and the record's probability for each class is the maximum over the 7 windows, as in the benchmark [[4]](#references). This applies to the *random crop* and *all combined* conditions; all other models are evaluated on the full 10 s record.
 
@@ -428,15 +599,15 @@ The strengths were fixed by visual inspection of augmented records (clearly visi
 
 *ResNet1D-10, test set (fold 10), mean ± std over 3 seeds; Δ relative to no augmentation:*
 
-| Condition | Macro AUROC | Δ | Macro AUPRC | Macro F1 @0.5 | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+| <small>Condition</small> | <small>Macro AUROC</small> | <small>Δ</small> | <small>Macro AUPRC</small> | <small>Macro F1 @0.5</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:----------|------------:|--:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
-| None | 0.9121 ± 0.0007 | — | 0.7960 ± 0.0016 | 0.6996 ± 0.0231 | 0.7232 ± 0.0045 | 0.9350 | 0.9020 | 0.9270 | 0.9010 | 0.8952 |
-| Noise | 0.9130 ± 0.0007 | +0.0009 | 0.7982 ± 0.0010 | 0.7053 ± 0.0223 | 0.7278 ± 0.0032 | 0.9354 | 0.9030 | 0.9281 | 0.9032 | 0.8955 |
-| Baseline wander | 0.9130 ± 0.0011 | +0.0009 | 0.7976 ± 0.0022 | 0.6991 ± 0.0283 | 0.7277 ± 0.0069 | 0.9352 | 0.9041 | 0.9284 | 0.9021 | 0.8954 |
-| Scaling | 0.9115 ± 0.0008 | −0.0006 | 0.7945 ± 0.0020 | 0.6825 ± 0.0159 | 0.7219 ± 0.0017 | 0.9337 | 0.8997 | 0.9272 | 0.9019 | 0.8948 |
-| Time shift | 0.9201 ± 0.0021 | +0.0080 | 0.8097 ± 0.0042 | 0.7178 ± 0.0032 | 0.7380 ± 0.0051 | 0.9413 | 0.9140 | 0.9290 | 0.9116 | 0.9046 |
-| **Random crop** | **0.9280 ± 0.0015** | **+0.0159** | 0.8216 ± 0.0047 | 0.7453 ± 0.0028 | 0.7491 ± 0.0006 | 0.9445 | 0.9321 | 0.9343 | 0.9223 | 0.9069 |
-| **All combined** | **0.9279 ± 0.0010** | **+0.0158** | 0.8232 ± 0.0057 | 0.7430 ± 0.0027 | 0.7465 ± 0.0035 | 0.9449 | 0.9332 | 0.9355 | 0.9252 | 0.9006 |
+| <small>None</small> | <small>$\colorbox{#F9CCC7}{0.9121 ± 0.0007}$</small> | <small>—</small> | <small>$\colorbox{#F9CDC7}{0.7960 ± 0.0016}$</small> | <small>$\colorbox{#FCDFBD}{0.6996 ± 0.0231}$</small> | <small>$\colorbox{#F9CDC7}{0.7232 ± 0.0045}$</small> | <small>$\colorbox{#FAD3C4}{0.9350}$</small> | <small>$\colorbox{#F9CFC6}{0.9020}$</small> | <small>$\colorbox{#F8C9C9}{0.9270}$</small> | <small>$\colorbox{#F8C9C9}{0.9010}$</small> | <small>$\colorbox{#F8CCC8}{0.8952}$</small> |
+| <small>Noise</small> | <small>$\colorbox{#F9D0C5}{0.9130 ± 0.0007}$</small> | <small>+0.0009</small> | <small>$\colorbox{#FAD4C3}{0.7982 ± 0.0010}$</small> | <small>$\colorbox{#FDE7B9}{0.7053 ± 0.0223}$</small> | <small>$\colorbox{#FBDBBF}{0.7278 ± 0.0032}$</small> | <small>$\colorbox{#FAD5C2}{0.9354}$</small> | <small>$\colorbox{#F9D1C5}{0.9030}$</small> | <small>$\colorbox{#FAD4C3}{0.9281}$</small> | <small>$\colorbox{#F9D0C5}{0.9032}$</small> | <small>$\colorbox{#F9CEC6}{0.8955}$</small> |
+| <small>Baseline wander</small> | <small>$\colorbox{#F9D0C5}{0.9130 ± 0.0011}$</small> | <small>+0.0009</small> | <small>$\colorbox{#FAD2C4}{0.7976 ± 0.0022}$</small> | <small>$\colorbox{#FCDFBD}{0.6991 ± 0.0283}$</small> | <small>$\colorbox{#FBDAC0}{0.7277 ± 0.0069}$</small> | <small>$\colorbox{#FAD4C3}{0.9352}$</small> | <small>$\colorbox{#FAD4C3}{0.9041}$</small> | <small>$\colorbox{#FAD7C2}{0.9284}$</small> | <small>$\colorbox{#F9CDC7}{0.9021}$</small> | <small>$\colorbox{#F9CDC7}{0.8954}$</small> |
+| <small>Scaling</small> | <small>$\colorbox{#F8C9C9}{0.9115 ± 0.0008}$</small> | <small>−0.0006</small> | <small>$\colorbox{#F8C9C9}{0.7945 ± 0.0020}$</small> | <small>$\colorbox{#F8C9C9}{0.6825 ± 0.0159}$</small> | <small>$\colorbox{#F8C9C9}{0.7219 ± 0.0017}$</small> | <small>$\colorbox{#F8C9C9}{0.9337}$</small> | <small>$\colorbox{#F8C9C9}{0.8997}$</small> | <small>$\colorbox{#F8CBC8}{0.9272}$</small> | <small>$\colorbox{#F9CCC7}{0.9019}$</small> | <small>$\colorbox{#F8C9C9}{0.8948}$</small> |
+| <small>Time shift</small> | <small>$\colorbox{#FDF2B4}{0.9201 ± 0.0021}$</small> | <small>+0.0080</small> | <small>$\colorbox{#FCF2B5}{0.8097 ± 0.0042}$</small> | <small>$\colorbox{#F8F2B6}{0.7178 ± 0.0032}$</small> | <small>$\colorbox{#F5F1B8}{0.7380 ± 0.0051}$</small> | <small>$\colorbox{#EBF1BD}{0.9413}$</small> | <small>$\colorbox{#FEECB6}{0.9140}$</small> | <small>$\colorbox{#FBDCBF}{0.9290}$</small> | <small>$\colorbox{#FEEDB6}{0.9116}$</small> | <small>$\colorbox{#DCF0C4}{0.9046}$</small> |
+| <small>**Random crop**</small> | <small>$\colorbox{#C6EFCE}{0.9280 ± 0.0015}$</small> | <small>**+0.0159**</small> | <small>$\colorbox{#CCEFCB}{0.8216 ± 0.0047}$</small> | <small>$\colorbox{#C6EFCE}{0.7453 ± 0.0028}$</small> | <small>$\colorbox{#C6EFCE}{0.7491 ± 0.0006}$</small> | <small>$\colorbox{#CAEFCC}{0.9445}$</small> | <small>$\colorbox{#CAEFCC}{0.9321}$</small> | <small>$\colorbox{#D6F0C6}{0.9343}$</small> | <small>$\colorbox{#D4F0C8}{0.9223}$</small> | <small>$\colorbox{#C6EFCE}{0.9069}$</small> |
+| <small>**All combined**</small> | <small>$\colorbox{#C7EFCE}{0.9279 ± 0.0010}$</small> | <small>**+0.0158**</small> | <small>$\colorbox{#C6EFCE}{0.8232 ± 0.0057}$</small> | <small>$\colorbox{#CAEFCC}{0.7430 ± 0.0027}$</small> | <small>$\colorbox{#D1F0C9}{0.7465 ± 0.0035}$</small> | <small>$\colorbox{#C6EFCE}{0.9449}$</small> | <small>$\colorbox{#C6EFCE}{0.9332}$</small> | <small>$\colorbox{#C6EFCE}{0.9355}$</small> | <small>$\colorbox{#C6EFCE}{0.9252}$</small> | <small>$\colorbox{#FFF0B4}{0.9006}$</small> |
 
 (NORM … HYP: per-class test AUROC. The *none* runs are identical to the ResNet1D-10 runs of E1, as training is deterministic for a given seed.)
 
@@ -460,21 +631,78 @@ The strengths were fixed by visual inspection of augmented records (clearly visi
   <img src="runs/e3_augment/figures/curves.png" alt="E3 learning curves" width="100%">
 </p>
 
-### E4: How many leads are needed? 12 leads vs 6 limb leads vs lead II only
+</details>
 
-*Planned.* Lead subsets are selected when the data are loaded, so no new preprocessing is needed: `--leads limb6` (I, II, III, aVR, aVL, aVF) and `--leads lead2` (lead II only).
+<details>
+<summary><a id="e4-how-many-leads-are-needed-12-leads-vs-6-limb-leads-vs-lead-ii-only"></a><h3 style="display:inline">E4: How many leads are needed? 12 leads vs 6 limb leads vs lead II only</h3></summary>
 
-### E5: Does finer resolution help? 100 Hz vs 500 Hz
+```bash
+python -m src.experiments.e4_leads    # 3 lead sets x 3 seeds
+```
+
+The reference model ResNet1D-10 (E1) is trained with the standard protocol and random 2.5 s crops (E3) on three lead sets; only the input leads change. Lead subsets are selected when the data are loaded, so every lead set uses the same cache, records and split.
+
+| <small>Lead set</small> | <small>Leads</small> |
+|:---------|:------|
+| <small>**12 leads**</small> | <small>I, II, III, aVR, aVL, aVF, V1–V6</small> |
+| <small>**6 limb leads**</small> | <small>I, II, III, aVR, aVL, aVF</small> |
+| <small>**Lead II**</small> | <small>II</small> |
+
+#### Results
+
+*Test set (fold 10), mean ± std over 3 seeds; 95% bootstrap CI of the macro AUROC averaged over seeds.*
+
+| <small>Lead set</small> | <small>Val macro AUROC</small> | <small>Test macro AUROC</small> | <small>95% CI</small> | <small>Macro AUPRC</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
+|:---------|----------------:|-----------------:|:------:|------------:|----------------:|-----:|---:|-----:|---:|----:|
+| <small>**12 leads**</small> | <small>$\colorbox{#C6EFCE}{0.9314 ± 0.0010}$</small> | <small>$\colorbox{#C6EFCE}{0.9280 ± 0.0015}$</small> | <small>[0.921, 0.935]</small> | <small>$\colorbox{#C6EFCE}{0.8216}$</small> | <small>$\colorbox{#C6EFCE}{0.7491}$</small> | <small>$\colorbox{#C6EFCE}{0.9445}$</small> | <small>$\colorbox{#C6EFCE}{0.9321}$</small> | <small>$\colorbox{#C6EFCE}{0.9343}$</small> | <small>$\colorbox{#C6EFCE}{0.9223}$</small> | <small>$\colorbox{#C6EFCE}{0.9069}$</small> |
+| <small>6 limb leads</small> | <small>$\colorbox{#F9F2B6}{0.9032 ± 0.0007}$</small> | <small>$\colorbox{#FCF2B4}{0.8953 ± 0.0004}$</small> | <small>[0.888, 0.904]</small> | <small>$\colorbox{#FBF2B5}{0.7570}$</small> | <small>$\colorbox{#FFEFB5}{0.6913}$</small> | <small>$\colorbox{#F7F2B7}{0.9252}$</small> | <small>$\colorbox{#FAF2B5}{0.8873}$</small> | <small>$\colorbox{#EBF1BC}{0.9166}$</small> | <small>$\colorbox{#FAD3C3}{0.8847}$</small> | <small>$\colorbox{#F7F2B7}{0.8627}$</small> |
+| <small>Lead II</small> | <small>$\colorbox{#F8C9C9}{0.8681 ± 0.0002}$</small> | <small>$\colorbox{#F8C9C9}{0.8591 ± 0.0002}$</small> | <small>[0.850, 0.868]</small> | <small>$\colorbox{#F8C9C9}{0.6831}$</small> | <small>$\colorbox{#F8C9C9}{0.6412}$</small> | <small>$\colorbox{#F8C9C9}{0.8999}$</small> | <small>$\colorbox{#F8C9C9}{0.8337}$</small> | <small>$\colorbox{#F8C9C9}{0.8797}$</small> | <small>$\colorbox{#F8C9C9}{0.8793}$</small> | <small>$\colorbox{#F8C9C9}{0.8031}$</small> |
+
+(NORM … HYP: per-class test AUROC. The 12-lead runs reproduce the random-crop runs of E3 exactly.)
+
+- **All 12 leads are needed.** Without the six precordial leads, macro AUROC drops by 0.033; with lead II alone, by 0.069. The 95% confidence intervals of the three lead sets do not overlap. Macro AUPRC falls even more, from 0.822 to 0.757 and 0.683.
+
+- **The precordial leads carry the information for MI, HYP and CD.** Without V1–V6, the largest losses are:
+
+  | <small>Class</small> | <small>Drop</small> |
+  |:------|-----:|
+  | <small>MI</small> | <small>−0.045</small> |
+  | <small>HYP</small> | <small>−0.044</small> |
+  | <small>CD</small> | <small>−0.038</small> |
+  | <small>NORM</small> | <small>−0.019</small> |
+  | <small>STTC</small> | <small>−0.018</small> |
+
+  This agrees with how these conditions are read: anterior infarctions appear mainly in V1–V4, the voltage criteria for left ventricular hypertrophy use V1, V5 and V6, and bundle branch blocks are recognized from the QRS shape in V1 and V6.
+
+- **Lead II alone keeps most of the limb-lead information for CD, but not for MI and HYP.** Relative to the 6 limb leads, lead II alone loses only 0.005 for CD, but 0.054 for MI and 0.060 for HYP. A plausible explanation: conduction disturbances such as atrioventricular blocks show as timing changes, e.g. of the PR interval, that are visible in a single lead. Infarction and hypertrophy, by contrast, depend on how the signal is distributed across leads.
+
+- **Fewer leads remove information, not just noise.** With fewer leads the model memorizes the training set less: at epoch 50 the training loss is 0.16, 0.25 and 0.32 for 12, 6 and 1 lead. The best validation epoch also comes later: 32–35, 28–38 and 45–48. Yet the minimum validation loss rises, from 0.29 to 0.33 and 0.37, so the missing leads cost accuracy rather than reducing overfitting.
+
+- **The cost is unchanged.** Only the first convolution depends on the number of leads (2.80–2.81M parameters), and every run takes about 40 s.
+
+The same comparison for the SVM baseline (B0) is planned.
+
+<p align="center">
+  <img src="runs/e4_leads/figures/curves.png" alt="E4 learning curves" width="100%">
+</p>
+
+</details>
+
+<details>
+<summary><a id="e5-does-finer-resolution-help-100-hz-vs-500-hz"></a><h3 style="display:inline">E5: Does finer resolution help? 100 Hz vs 500 Hz</h3></summary>
 
 *Planned.* The 500 Hz signal cache is built once with `python -m src.data.preprocess --fs 500`; runs then use it with `--fs 500`.
+
+</details>
 
 ---
 
 ## Supplementary study: Optimizing the ResNet architecture
 
-S1 and S2 study the ResNet itself in more depth. S1 examines individual design choices; S2 searches the ResNet family for a single model that reaches a test macro AUROC of 0.94. The ResNet thus received considerably more design effort than the other model families: 8 design variants in S1 and 30 architecture variants in S2, compared with two sizes each for the BiLSTM and the CNN + Transformer in E2. For this reason the study is reported separately from the research questions.
+S1 and S2 study the ResNet itself in more depth. S1 examines individual design choices; S2 searches the ResNet family for the best single model. The ResNet thus received considerably more design effort than the other model families: 8 design variants in S1 and 30 architecture variants in S2, compared with two sizes each for the BiLSTM and the CNN + Transformer in E2. For this reason the study is reported separately from the research questions.
 
-### S1: Which ResNet design choices help? Custom ResNet variants
+<details>
+<summary><a id="s1-which-resnet-design-choices-help-custom-resnet-variants"></a><h3 style="display:inline">S1: Which ResNet design choices help? Custom ResNet variants</h3></summary>
 
 ```bash
 python -m src.experiments.s1_resnet_design
@@ -482,30 +710,30 @@ python -m src.experiments.s1_resnet_design
 
 E1 compared classic ResNets that differ only in depth. S1 starts from the classic ResNet1D-10 and changes one design choice at a time, using three choices in which the classic layout differs from `resnet1d_wang` (B0); the result is a custom ResNet. All models are trained with the standard protocol and random crop, the best augmentation of E3, so that only the architecture changes.
 
-| Model | Change from the classic ResNet1D-10 | Motivation |
+| <small>Model</small> | <small>Change from the classic ResNet1D-10</small> | <small>Motivation</small> |
 |:------|:------------------------------------|:-----------|
-| `resnet1d10` | none (classic layout) | baseline |
-| `resnet1d10_stem1` | stem convolution with stride 1 and no max-pooling | 4 times finer time axis: on a 2.5 s crop, 32 instead of 8 time steps remain after the last stage |
-| `resnet1d10_chead` | head of the benchmark: concatenated max and average pooling, batch-norm, dropout 0.25 and 0.5, hidden layer of 128 units | max pooling retains short, localized findings; dropout regularizes |
-| `resnet1d10_w128` | constant width of 128 channels instead of 64–128–256–512 | a quarter of the parameters, less capacity to memorize |
-| `resnet1d10_stem1_chead_w128` | all three | |
-| `resnet1d18`, `resnet1d34` | deeper classic ResNets | does the E1 result change once random crop limits overfitting? |
-| `resnet1d_wang` | benchmark architecture | fair comparison with B0 under the standard protocol |
+| <small>`resnet1d10`</small> | <small>none (classic layout)</small> | <small>baseline</small> |
+| <small>`resnet1d10_stem1`</small> | <small>stem convolution with stride 1 and no max-pooling</small> | <small>4 times finer time axis: on a 2.5 s crop, 32 instead of 8 time steps remain after the last stage</small> |
+| <small>`resnet1d10_chead`</small> | <small>head of the benchmark: concatenated max and average pooling, batch-norm, dropout 0.25 and 0.5, hidden layer of 128 units</small> | <small>max pooling retains short, localized findings; dropout regularizes</small> |
+| <small>`resnet1d10_w128`</small> | <small>constant width of 128 channels instead of 64–128–256–512</small> | <small>a quarter of the parameters, less capacity to memorize</small> |
+| <small>`resnet1d10_stem1_chead_w128`</small> | <small>all three</small> | |
+| <small>`resnet1d18`, `resnet1d34`</small> | <small>deeper classic ResNets</small> | <small>does the E1 result change once random crop limits overfitting?</small> |
+| <small>`resnet1d_wang`</small> | <small>benchmark architecture</small> | <small>fair comparison with B0 under the standard protocol</small> |
 
 #### Results
 
 *Standard protocol with random crop, test set (fold 10), mean ± std over 3 seeds; Δ relative to the classic ResNet1D-10:*
 
-| Model | Params | Train time | Macro AUROC | Δ | Macro AUPRC | Macro F1 @0.5 | Macro F1 @tuned | NORM | MI | STTC | CD | HYP |
+| <small>Model</small> | <small>Params</small> | <small>Train time</small> | <small>Macro AUROC</small> | <small>Δ</small> | <small>Macro AUPRC</small> | <small>Macro F1 @0.5</small> | <small>Macro F1 @tuned</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:------|-------:|-----------:|------------:|--:|------------:|--------------:|----------------:|-----:|---:|-----:|---:|----:|
-| ResNet1D-10 (classic) | 2.8M | 31 s | 0.9280 ± 0.0015 | — | 0.8216 ± 0.0047 | 0.7453 ± 0.0028 | 0.7491 ± 0.0006 | 0.9445 | 0.9321 | 0.9343 | 0.9223 | 0.9069 |
-| + stride-1 stem | 2.8M | 36 s | 0.9275 ± 0.0020 | −0.0005 | 0.8232 ± 0.0053 | 0.7361 ± 0.0059 | 0.7474 ± 0.0086 | 0.9473 | 0.9338 | 0.9295 | 0.9223 | 0.9046 |
-| + concat-pooling head | 2.9M | 35 s | 0.9272 ± 0.0019 | −0.0008 | 0.8228 ± 0.0063 | 0.7431 ± 0.0043 | 0.7471 ± 0.0052 | 0.9458 | 0.9293 | 0.9335 | 0.9224 | 0.9048 |
-| + width 128 | 0.72M | 31 s | 0.9275 ± 0.0015 | −0.0005 | 0.8207 ± 0.0010 | 0.7433 ± 0.0040 | 0.7477 ± 0.0029 | 0.9454 | 0.9315 | 0.9334 | 0.9207 | 0.9064 |
-| **+ all three** | 0.75M | 38 s | **0.9305 ± 0.0019** | **+0.0025** | 0.8317 ± 0.0051 | 0.7536 ± 0.0045 | 0.7554 ± 0.0048 | 0.9489 | 0.9379 | 0.9350 | 0.9274 | 0.9031 |
-| ResNet1D-18 (classic) | 6.3M | 46 s | 0.9265 ± 0.0007 | −0.0015 | 0.8179 ± 0.0011 | 0.7413 ± 0.0009 | 0.7426 ± 0.0024 | 0.9449 | 0.9316 | 0.9321 | 0.9199 | 0.9042 |
-| ResNet1D-34 (classic) | 11.9M | 78 s | 0.9259 ± 0.0007 | −0.0021 | 0.8170 ± 0.0032 | 0.7447 ± 0.0017 | 0.7459 ± 0.0013 | 0.9455 | 0.9306 | 0.9309 | 0.9224 | 0.8999 |
-| `resnet1d_wang` | 0.47M | 32 s | 0.9289 ± 0.0006 | +0.0009 | 0.8267 ± 0.0020 | 0.7459 ± 0.0072 | 0.7504 ± 0.0060 | 0.9468 | 0.9340 | 0.9329 | 0.9248 | 0.9058 |
+| <small>ResNet1D-10 (classic)</small> | <small>2.8M</small> | <small>31 s</small> | <small>$\colorbox{#FEEEB5}{0.9280 ± 0.0015}$</small> | <small>—</small> | <small>$\colorbox{#FCE3BB}{0.8216 ± 0.0047}$</small> | <small>$\colorbox{#FCF2B4}{0.7453 ± 0.0028}$</small> | <small>$\colorbox{#FEF2B3}{0.7491 ± 0.0006}$</small> | <small>$\colorbox{#F8C9C9}{0.9445}$</small> | <small>$\colorbox{#FDE4BB}{0.9321}$</small> | <small>$\colorbox{#D5F0C7}{0.9343}$</small> | <small>$\colorbox{#FCE3BB}{0.9223}$</small> | <small>$\colorbox{#C6EFCE}{0.9069}$</small> |
+| <small>+ stride-1 stem</small> | <small>2.8M</small> | <small>36 s</small> | <small>$\colorbox{#FDE6BA}{0.9275 ± 0.0020}$</small> | <small>−0.0005</small> | <small>$\colorbox{#FEECB6}{0.8232 ± 0.0053}$</small> | <small>$\colorbox{#F8C9C9}{0.7361 ± 0.0059}$</small> | <small>$\colorbox{#FDE8B9}{0.7474 ± 0.0086}$</small> | <small>$\colorbox{#EFF1BA}{0.9473}$</small> | <small>$\colorbox{#FCF2B4}{0.9338}$</small> | <small>$\colorbox{#F8C9C9}{0.9295}$</small> | <small>$\colorbox{#FCE3BB}{0.9223}$</small> | <small>$\colorbox{#EBF1BC}{0.9046}$</small> |
+| <small>+ concat-pooling head</small> | <small>2.9M</small> | <small>35 s</small> | <small>$\colorbox{#FCE0BD}{0.9272 ± 0.0019}$</small> | <small>−0.0008</small> | <small>$\colorbox{#FEE9B8}{0.8228 ± 0.0063}$</small> | <small>$\colorbox{#FEEAB7}{0.7431 ± 0.0043}$</small> | <small>$\colorbox{#FDE6BA}{0.7471 ± 0.0052}$</small> | <small>$\colorbox{#FCE1BC}{0.9458}$</small> | <small>$\colorbox{#F8C9C9}{0.9293}$</small> | <small>$\colorbox{#E5F1BF}{0.9335}$</small> | <small>$\colorbox{#FDE4BA}{0.9224}$</small> | <small>$\colorbox{#E8F1BE}{0.9048}$</small> |
+| <small>+ width 128</small> | <small>0.72M</small> | <small>31 s</small> | <small>$\colorbox{#FDE6BA}{0.9275 ± 0.0015}$</small> | <small>−0.0005</small> | <small>$\colorbox{#FCDEBE}{0.8207 ± 0.0010}$</small> | <small>$\colorbox{#FEEBB7}{0.7433 ± 0.0040}$</small> | <small>$\colorbox{#FEEAB7}{0.7477 ± 0.0029}$</small> | <small>$\colorbox{#FBDAC0}{0.9454}$</small> | <small>$\colorbox{#FCDEBE}{0.9315}$</small> | <small>$\colorbox{#E7F1BE}{0.9334}$</small> | <small>$\colorbox{#F9D2C4}{0.9207}$</small> | <small>$\colorbox{#CEEFCA}{0.9064}$</small> |
+| <small>**+ all three**</small> | <small>0.75M</small> | <small>38 s</small> | <small>$\colorbox{#C6EFCE}{0.9305 ± 0.0019}$</small> | <small>**+0.0025**</small> | <small>$\colorbox{#C6EFCE}{0.8317 ± 0.0051}$</small> | <small>$\colorbox{#C6EFCE}{0.7536 ± 0.0045}$</small> | <small>$\colorbox{#C6EFCE}{0.7554 ± 0.0048}$</small> | <small>$\colorbox{#C6EFCE}{0.9489}$</small> | <small>$\colorbox{#C6EFCE}{0.9379}$</small> | <small>$\colorbox{#C6EFCE}{0.9350}$</small> | <small>$\colorbox{#C6EFCE}{0.9274}$</small> | <small>$\colorbox{#FEEEB5}{0.9031}$</small> |
+| <small>ResNet1D-18 (classic)</small> | <small>6.3M</small> | <small>46 s</small> | <small>$\colorbox{#FAD4C3}{0.9265 ± 0.0007}$</small> | <small>−0.0015</small> | <small>$\colorbox{#F9CEC6}{0.8179 ± 0.0011}$</small> | <small>$\colorbox{#FCE1BC}{0.7413 ± 0.0009}$</small> | <small>$\colorbox{#F8C9C9}{0.7426 ± 0.0024}$</small> | <small>$\colorbox{#F9D0C5}{0.9449}$</small> | <small>$\colorbox{#FCDFBD}{0.9316}$</small> | <small>$\colorbox{#FFF0B4}{0.9321}$</small> | <small>$\colorbox{#F8C9C9}{0.9199}$</small> | <small>$\colorbox{#F2F1B9}{0.9042}$</small> |
+| <small>ResNet1D-34 (classic)</small> | <small>11.9M</small> | <small>78 s</small> | <small>$\colorbox{#F8C9C9}{0.9259 ± 0.0007}$</small> | <small>−0.0021</small> | <small>$\colorbox{#F8C9C9}{0.8170 ± 0.0032}$</small> | <small>$\colorbox{#FFF1B3}{0.7447 ± 0.0017}$</small> | <small>$\colorbox{#FCDEBE}{0.7459 ± 0.0013}$</small> | <small>$\colorbox{#FBDCBF}{0.9455}$</small> | <small>$\colorbox{#FAD5C2}{0.9306}$</small> | <small>$\colorbox{#FCDEBE}{0.9309}$</small> | <small>$\colorbox{#FDE4BA}{0.9224}$</small> | <small>$\colorbox{#F8C9C9}{0.8999}$</small> |
+| <small>`resnet1d_wang`</small> | <small>0.47M</small> | <small>32 s</small> | <small>$\colorbox{#EEF1BB}{0.9289 ± 0.0006}$</small> | <small>+0.0009</small> | <small>$\colorbox{#EDF1BC}{0.8267 ± 0.0020}$</small> | <small>$\colorbox{#F8F2B6}{0.7459 ± 0.0072}$</small> | <small>$\colorbox{#F3F1B9}{0.7504 ± 0.0060}$</small> | <small>$\colorbox{#FCF2B4}{0.9468}$</small> | <small>$\colorbox{#FAF2B6}{0.9340}$</small> | <small>$\colorbox{#F2F1B9}{0.9329}$</small> | <small>$\colorbox{#EEF1BB}{0.9248}$</small> | <small>$\colorbox{#D8F0C6}{0.9058}$</small> |
 
 (NORM … HYP: per-class test AUROC. The classic ResNet1D-10 runs are identical to the random-crop runs of E3.)
 
@@ -523,7 +751,10 @@ E1 compared classic ResNets that differ only in depth. S1 starts from the classi
   <img src="runs/s1_resnet_design/figures/curves.png" alt="S1 learning curves" width="100%">
 </p>
 
-### S2: How far can a ResNet go? Target macro AUROC 0.94
+</details>
+
+<details>
+<summary><a id="s2-how-far-can-a-resnet-go-architecture-search-within-the-resnet-family"></a><h3 style="display:inline">S2: How far can a ResNet go? Architecture search within the ResNet family</h3></summary>
 
 ```bash
 python -m src.experiments.s2_resnet_search                                # all variants, seeds 0-2
@@ -531,7 +762,7 @@ python -m src.experiments.s2_resnet_search --variants base leadwise --seeds 0
 python -m src.experiments.s2_resnet_search --report-only --show-test       # final report with test set
 ```
 
-Starting from the best custom ResNet of S1 (`base`: stride-1 stem, concatenated-pooling head, constant width 128), S2 searches the ResNet family for a single model that reaches a test macro AUROC of 0.94. Only the architecture changes. Every variant is one ResNet, trained with the standard protocol and random crop as in S1, and evaluated exactly as in E3 and S1 (maximum over the 7 windows). There are no ensembles and no changes to training or inference. All variants are built with `src/models/resnet1d_plus.py`, whose default is identical to `base`.
+Starting from the best custom ResNet of S1 (`base`: stride-1 stem, concatenated-pooling head, constant width 128), S2 searches the ResNet family for the best single model. Only the architecture changes. Every variant is one ResNet, trained with the standard protocol and random crop as in S1, and evaluated exactly as in E3 and S1 (maximum over the 7 windows). There are no ensembles and no changes to training or inference. All variants are built with `src/models/resnet1d_plus.py`, whose default is identical to `base`.
 
 **Selection.** Because 30 variants are compared, selection uses the validation set (fold 9) only. Every variant is trained on three seeds, and the variant with the highest mean validation macro AUROC is selected. The test set was evaluated only after this choice had been fixed, so its values below played no part in the selection.
 
@@ -542,57 +773,57 @@ The search ran in three rounds:
 
 *Sorted by validation macro AUROC; mean ± std over 3 seeds. Base receptive field: 99 samples (1.0 s).*
 
-| Variant | Change from `base` | Params | Val macro AUROC | Test macro AUROC |
+| <small>Variant</small> | <small>Change from `base`</small> | <small>Params</small> | <small>Val macro AUROC</small> | <small>Test macro AUROC</small> |
 |:--------|:-------------------|-------:|----------------:|-----------------:|
-| **`lww256d2dp`** (selected) | lead-wise stem + width 256 + 2 blocks per stage + stochastic depth | 5.5M | **0.9356 ± 0.0013** | **0.9328 ± 0.0006** |
-| `lw16` | lead-wise stem with 16 filters per lead | 0.77M | 0.9352 ± 0.0009 | 0.9337 ± 0.0008 |
-| `leadwise` | lead-wise stem: grouped convolution (kernel 7) with 8 filters per lead, then a 1×1 convolution across the leads | 0.76M | 0.9349 ± 0.0004 | 0.9313 ± 0.0016 |
-| `lwse` | lead-wise stem + squeeze-excitation | 0.76M | 0.9346 ± 0.0009 | 0.9308 ± 0.0009 |
-| `lwsed2dp` | lead-wise stem + squeeze-excitation + 2 blocks + stochastic depth | 1.4M | 0.9346 ± 0.0004 | 0.9320 ± 0.0005 |
-| `w256d2dp` | width 256 + 2 blocks + stochastic depth | 5.5M | 0.9345 ± 0.0007 | 0.9313 ± 0.0004 |
-| `base` | — | 0.75M | 0.9339 ± 0.0004 | 0.9305 ± 0.0019 |
-| `sed2dp` | squeeze-excitation + 2 blocks + stochastic depth | 1.4M | 0.9339 ± 0.0002 | 0.9310 ± 0.0007 |
-| `k53` | kernel 5 in the first and 3 in the second convolution of each block (as `resnet1d_wang`) | 0.62M | 0.9338 ± 0.0011 | 0.9300 ± 0.0022 |
-| `se` | squeeze-excitation on every residual branch [[12]](#references) | 0.76M | 0.9337 ± 0.0009 | 0.9306 ± 0.0009 |
-| `d2dp` | `[2,2,2,2]` blocks, residual branches dropped with probability up to 0.2 [[13]](#references) | 1.4M | 0.9337 ± 0.0002 | 0.9309 ± 0.0014 |
-| `w256` | 256 channels in every stage | 2.9M | 0.9336 ± 0.0009 | 0.9306 ± 0.0016 |
-| `blur` | anti-aliased downsampling: stride-1 convolution followed by blur pooling, also in the shortcut [[15]](#references) | 0.75M | 0.9335 ± 0.0013 | 0.9293 ± 0.0008 |
-| `bneck50` | bottleneck blocks `[3,4,6,3]`, widths 256–2048 (1D ResNet-50) [[8]](#references) | 19.0M | 0.9335 ± 0.0011 | 0.9294 ± 0.0006 |
-| `preact` | pre-activation blocks (BN–ReLU–conv) [[11]](#references) | 0.75M | 0.9334 ± 0.0002 | 0.9290 ± 0.0019 |
-| `d2` | `[2,2,2,2]` blocks | 1.4M | 0.9334 ± 0.0002 | 0.9300 ± 0.0010 |
-| `ps25` | head dropout 0.25 instead of 0.5 | 0.75M | 0.9334 ± 0.0007 | 0.9302 ± 0.0011 |
-| `s3w256` | 3 stages + width 256 | 2.2M | 0.9333 ± 0.0002 | 0.9294 ± 0.0004 |
-| `k7` | kernel size 7 (receptive field 1.5 s) | 1.0M | 0.9333 ± 0.0004 | 0.9306 ± 0.0017 |
-| `s3` | one stage fewer (`[1,1,1]`) | 0.57M | 0.9332 ± 0.0008 | 0.9285 ± 0.0017 |
-| `resd` | average pooling before the strided 1×1 shortcut (ResNet-D) [[14]](#references) | 0.75M | 0.9331 ± 0.0002 | 0.9291 ± 0.0009 |
-| `ps75` | head dropout 0.75 instead of 0.5 | 0.75M | 0.9331 ± 0.0005 | 0.9292 ± 0.0004 |
-| `dilrf` | dilation 2 in stages 2–4 (receptive field 1.8 s) [[16]](#references) | 0.75M | 0.9330 ± 0.0008 | 0.9293 ± 0.0003 |
-| `deepstem` | three stem convolutions instead of one [[14]](#references) | 0.81M | 0.9327 ± 0.0003 | 0.9296 ± 0.0004 |
-| `k3` | kernel size 3 | 0.49M | 0.9326 ± 0.0005 | 0.9302 ± 0.0014 |
-| `w64` | 64 channels in every stage | 0.20M | 0.9324 ± 0.0009 | 0.9299 ± 0.0012 |
-| `stemk15` | stem kernel size 15 instead of 7 | 0.76M | 0.9324 ± 0.0007 | 0.9283 ± 0.0005 |
-| `k9` | kernel size 9 (receptive field 1.9 s) | 1.3M | 0.9319 ± 0.0009 | 0.9295 ± 0.0001 |
-| `silu` | SiLU instead of ReLU | 0.75M | 0.9314 ± 0.0005 | 0.9289 ± 0.0012 |
-| `dil` | no downsampling, dilations 1/2/4/8 (dilated ResNet; receptive field 1.3 s) [[16]](#references) | 0.70M | 0.9313 ± 0.0003 | 0.9281 ± 0.0006 |
+| <small>**`lww256d2dp`** (selected)</small> | <small>lead-wise stem + width 256 + 2 blocks per stage + stochastic depth</small> | <small>5.5M</small> | <small>$\colorbox{#C6EFCE}{0.9356 ± 0.0013}$</small> | <small>$\colorbox{#D8F0C5}{0.9328 ± 0.0006}$</small> |
+| <small>`lw16`</small> | <small>lead-wise stem with 16 filters per lead</small> | <small>0.77M</small> | <small>$\colorbox{#D1F0C9}{0.9352 ± 0.0009}$</small> | <small>$\colorbox{#C6EFCE}{0.9337 ± 0.0008}$</small> |
+| <small>`leadwise`</small> | <small>lead-wise stem: grouped convolution (kernel 7) with 8 filters per lead, then a 1×1 convolution across the leads</small> | <small>0.76M</small> | <small>$\colorbox{#D9F0C5}{0.9349 ± 0.0004}$</small> | <small>$\colorbox{#F7F2B7}{0.9313 ± 0.0016}$</small> |
+| <small>`lwse`</small> | <small>lead-wise stem + squeeze-excitation</small> | <small>0.76M</small> | <small>$\colorbox{#E1F0C1}{0.9346 ± 0.0009}$</small> | <small>$\colorbox{#FFF1B4}{0.9308 ± 0.0009}$</small> |
+| <small>`lwsed2dp`</small> | <small>lead-wise stem + squeeze-excitation + 2 blocks + stochastic depth</small> | <small>1.4M</small> | <small>$\colorbox{#E1F0C1}{0.9346 ± 0.0004}$</small> | <small>$\colorbox{#E9F1BE}{0.9320 ± 0.0005}$</small> |
+| <small>`w256d2dp`</small> | <small>width 256 + 2 blocks + stochastic depth</small> | <small>5.5M</small> | <small>$\colorbox{#E3F1C0}{0.9345 ± 0.0007}$</small> | <small>$\colorbox{#F7F2B7}{0.9313 ± 0.0004}$</small> |
+| <small>`base`</small> | <small>—</small> | <small>0.75M</small> | <small>$\colorbox{#F3F1B9}{0.9339 ± 0.0004}$</small> | <small>$\colorbox{#FEECB6}{0.9305 ± 0.0019}$</small> |
+| <small>`sed2dp`</small> | <small>squeeze-excitation + 2 blocks + stochastic depth</small> | <small>1.4M</small> | <small>$\colorbox{#F3F1B9}{0.9339 ± 0.0002}$</small> | <small>$\colorbox{#FDF2B4}{0.9310 ± 0.0007}$</small> |
+| <small>`k53`</small> | <small>kernel 5 in the first and 3 in the second convolution of each block (as `resnet1d_wang`)</small> | <small>0.62M</small> | <small>$\colorbox{#F6F2B7}{0.9338 ± 0.0011}$</small> | <small>$\colorbox{#FDE5BA}{0.9300 ± 0.0022}$</small> |
+| <small>`se`</small> | <small>squeeze-excitation on every residual branch [[12]](#references)</small> | <small>0.76M</small> | <small>$\colorbox{#F8F2B6}{0.9337 ± 0.0009}$</small> | <small>$\colorbox{#FEEEB5}{0.9306 ± 0.0009}$</small> |
+| <small>`d2dp`</small> | <small>`[2,2,2,2]` blocks, residual branches dropped with probability up to 0.2 [[13]](#references)</small> | <small>1.4M</small> | <small>$\colorbox{#F8F2B6}{0.9337 ± 0.0002}$</small> | <small>$\colorbox{#FFF2B3}{0.9309 ± 0.0014}$</small> |
+| <small>`w256`</small> | <small>256 channels in every stage</small> | <small>2.9M</small> | <small>$\colorbox{#FBF2B5}{0.9336 ± 0.0009}$</small> | <small>$\colorbox{#FEEEB5}{0.9306 ± 0.0016}$</small> |
+| <small>`blur`</small> | <small>anti-aliased downsampling: stride-1 convolution followed by blur pooling, also in the shortcut [[15]](#references)</small> | <small>0.75M</small> | <small>$\colorbox{#FEF2B4}{0.9335 ± 0.0013}$</small> | <small>$\colorbox{#FBDBC0}{0.9293 ± 0.0008}$</small> |
+| <small>`bneck50`</small> | <small>bottleneck blocks `[3,4,6,3]`, widths 256–2048 (1D ResNet-50) [[8]](#references)</small> | <small>19.0M</small> | <small>$\colorbox{#FEF2B4}{0.9335 ± 0.0011}$</small> | <small>$\colorbox{#FBDCBF}{0.9294 ± 0.0006}$</small> |
+| <small>`preact`</small> | <small>pre-activation blocks (BN–ReLU–conv) [[11]](#references)</small> | <small>0.75M</small> | <small>$\colorbox{#FFF1B4}{0.9334 ± 0.0002}$</small> | <small>$\colorbox{#FAD6C2}{0.9290 ± 0.0019}$</small> |
+| <small>`d2`</small> | <small>`[2,2,2,2]` blocks</small> | <small>1.4M</small> | <small>$\colorbox{#FFF1B4}{0.9334 ± 0.0002}$</small> | <small>$\colorbox{#FDE5BA}{0.9300 ± 0.0010}$</small> |
+| <small>`ps25`</small> | <small>head dropout 0.25 instead of 0.5</small> | <small>0.75M</small> | <small>$\colorbox{#FFF1B4}{0.9334 ± 0.0007}$</small> | <small>$\colorbox{#FDE8B8}{0.9302 ± 0.0011}$</small> |
+| <small>`s3w256`</small> | <small>3 stages + width 256</small> | <small>2.2M</small> | <small>$\colorbox{#FFEFB5}{0.9333 ± 0.0002}$</small> | <small>$\colorbox{#FBDCBF}{0.9294 ± 0.0004}$</small> |
+| <small>`k7`</small> | <small>kernel size 7 (receptive field 1.5 s)</small> | <small>1.0M</small> | <small>$\colorbox{#FFEFB5}{0.9333 ± 0.0004}$</small> | <small>$\colorbox{#FEEEB5}{0.9306 ± 0.0017}$</small> |
+| <small>`s3`</small> | <small>one stage fewer (`[1,1,1]`)</small> | <small>0.57M</small> | <small>$\colorbox{#FEEDB6}{0.9332 ± 0.0008}$</small> | <small>$\colorbox{#F9CFC6}{0.9285 ± 0.0017}$</small> |
+| <small>`resd`</small> | <small>average pooling before the strided 1×1 shortcut (ResNet-D) [[14]](#references)</small> | <small>0.75M</small> | <small>$\colorbox{#FEEBB7}{0.9331 ± 0.0002}$</small> | <small>$\colorbox{#FBD8C1}{0.9291 ± 0.0009}$</small> |
+| <small>`ps75`</small> | <small>head dropout 0.75 instead of 0.5</small> | <small>0.75M</small> | <small>$\colorbox{#FEEBB7}{0.9331 ± 0.0005}$</small> | <small>$\colorbox{#FBD9C0}{0.9292 ± 0.0004}$</small> |
+| <small>`dilrf`</small> | <small>dilation 2 in stages 2–4 (receptive field 1.8 s) [[16]](#references)</small> | <small>0.75M</small> | <small>$\colorbox{#FEE9B8}{0.9330 ± 0.0008}$</small> | <small>$\colorbox{#FBDBC0}{0.9293 ± 0.0003}$</small> |
+| <small>`deepstem`</small> | <small>three stem convolutions instead of one [[14]](#references)</small> | <small>0.81M</small> | <small>$\colorbox{#FDE4BB}{0.9327 ± 0.0003}$</small> | <small>$\colorbox{#FCDFBD}{0.9296 ± 0.0004}$</small> |
+| <small>`k3`</small> | <small>kernel size 3</small> | <small>0.49M</small> | <small>$\colorbox{#FCE2BC}{0.9326 ± 0.0005}$</small> | <small>$\colorbox{#FDE8B8}{0.9302 ± 0.0014}$</small> |
+| <small>`w64`</small> | <small>64 channels in every stage</small> | <small>0.20M</small> | <small>$\colorbox{#FCDEBE}{0.9324 ± 0.0009}$</small> | <small>$\colorbox{#FCE3BB}{0.9299 ± 0.0012}$</small> |
+| <small>`stemk15`</small> | <small>stem kernel size 15 instead of 7</small> | <small>0.76M</small> | <small>$\colorbox{#FCDEBE}{0.9324 ± 0.0007}$</small> | <small>$\colorbox{#F8CCC7}{0.9283 ± 0.0005}$</small> |
+| <small>`k9`</small> | <small>kernel size 9 (receptive field 1.9 s)</small> | <small>1.3M</small> | <small>$\colorbox{#FAD4C3}{0.9319 ± 0.0009}$</small> | <small>$\colorbox{#FBDDBE}{0.9295 ± 0.0001}$</small> |
+| <small>`silu`</small> | <small>SiLU instead of ReLU</small> | <small>0.75M</small> | <small>$\colorbox{#F8CBC8}{0.9314 ± 0.0005}$</small> | <small>$\colorbox{#FAD5C3}{0.9289 ± 0.0012}$</small> |
+| <small>`dil`</small> | <small>no downsampling, dilations 1/2/4/8 (dilated ResNet; receptive field 1.3 s) [[16]](#references)</small> | <small>0.70M</small> | <small>$\colorbox{#F8C9C9}{0.9313 ± 0.0003}$</small> | <small>$\colorbox{#F8C9C9}{0.9281 ± 0.0006}$</small> |
 
 #### Results
 
 *Selected model compared with `base` and the lead-wise stem alone; test set (fold 10), mean ± std over 3 seeds.*
 
-| Model | Params | Val macro AUROC | Test macro AUROC | Test macro AUPRC | Test macro F1 (tuned) |
+| <small>Model</small> | <small>Params</small> | <small>Val macro AUROC</small> | <small>Test macro AUROC</small> | <small>Test macro AUPRC</small> | <small>Test macro F1 (tuned)</small> |
 |:------|-------:|----------------:|-----------------:|-----------------:|----------------------:|
-| `base` (S1) | 0.75M | 0.9339 ± 0.0004 | 0.9305 ± 0.0019 | 0.8317 ± 0.0051 | 0.755 ± 0.005 |
-| `leadwise` | 0.76M | 0.9349 ± 0.0004 | 0.9313 ± 0.0016 | 0.8333 ± 0.0045 | 0.755 ± 0.001 |
-| **`lww256d2dp`** (selected) | 5.5M | **0.9356 ± 0.0013** | **0.9328 ± 0.0006** | **0.8365 ± 0.0025** | **0.759 ± 0.006** |
+| <small>`base` (S1)</small> | <small>0.75M</small> | <small>$\colorbox{#F8C9C9}{0.9339 ± 0.0004}$</small> | <small>$\colorbox{#F8C9C9}{0.9305 ± 0.0019}$</small> | <small>$\colorbox{#F8C9C9}{0.8317 ± 0.0051}$</small> | <small>$\colorbox{#F8C9C9}{0.755 ± 0.005}$</small> |
+| <small>`leadwise`</small> | <small>0.76M</small> | <small>$\colorbox{#F5F1B8}{0.9349 ± 0.0004}$</small> | <small>$\colorbox{#FDE6BA}{0.9313 ± 0.0016}$</small> | <small>$\colorbox{#FDE4BA}{0.8333 ± 0.0045}$</small> | <small>$\colorbox{#F8C9C9}{0.755 ± 0.001}$</small> |
+| <small>**`lww256d2dp`** (selected)</small> | <small>5.5M</small> | <small>$\colorbox{#C6EFCE}{0.9356 ± 0.0013}$</small> | <small>$\colorbox{#C6EFCE}{0.9328 ± 0.0006}$</small> | <small>$\colorbox{#C6EFCE}{0.8365 ± 0.0025}$</small> | <small>$\colorbox{#C6EFCE}{0.759 ± 0.006}$</small> |
 
 *Test AUROC per class, selected model vs `base`:*
 
-| Model | NORM | MI | STTC | CD | HYP |
+| <small>Model</small> | <small>NORM</small> | <small>MI</small> | <small>STTC</small> | <small>CD</small> | <small>HYP</small> |
 |:------|-----:|---:|-----:|---:|----:|
-| `base` | 0.9489 | 0.9379 | 0.9350 | **0.9274** | 0.9031 |
-| `lww256d2dp` | **0.9520** | **0.9405** | **0.9362** | 0.9270 | **0.9082** |
+| <small>`base`</small> | <small>$\colorbox{#F8C9C9}{0.9489}$</small> | <small>$\colorbox{#F8C9C9}{0.9379}$</small> | <small>$\colorbox{#F8C9C9}{0.9350}$</small> | <small>$\colorbox{#C6EFCE}{0.9274}$</small> | <small>$\colorbox{#F8C9C9}{0.9031}$</small> |
+| <small>`lww256d2dp`</small> | <small>$\colorbox{#C6EFCE}{0.9520}$</small> | <small>$\colorbox{#C6EFCE}{0.9405}$</small> | <small>$\colorbox{#C6EFCE}{0.9362}$</small> | <small>$\colorbox{#F8C9C9}{0.9270}$</small> | <small>$\colorbox{#C6EFCE}{0.9082}$</small> |
 
-- **The target of 0.94 is not reached.** The selected ResNet reaches 0.9328 ± 0.0006 on the test set (0.9356 on validation), 0.0072 below the target. Across all 30 variants, test macro AUROC ranges from 0.928 to 0.934. For comparison, the best single model of the PTB-XL benchmark reaches 0.930 and its ensemble 0.934 [[4]](#references). Trained with the standard protocol, the selected model matches `resnet1d_wang` trained with the benchmark procedure (0.9324, best-validation checkpoint, B0).
+- **The best single ResNet reaches 0.9328.** The selected ResNet reaches 0.9328 ± 0.0006 on the test set (0.9356 on validation). Across all 30 variants, test macro AUROC ranges from 0.928 to 0.934. For comparison, the best single model of the PTB-XL benchmark reaches 0.930 and its ensemble 0.934 [[4]](#references). Trained with the standard protocol, the selected model matches `resnet1d_wang` trained with the benchmark procedure (0.9324, best-validation checkpoint, B0).
 
 - **A lead-wise stem is the only change that helps consistently.** Here the first layer processes each lead separately: a grouped convolution with 8 filters per lead, then a 1×1 convolution that combines the leads. This improves validation AUROC on all three seeds (+0.0007, +0.0017, +0.0006 over `base`). All five lead-wise variants are also at or above `base` on the test set (0.9308–0.9337). A plausible explanation is that the filters first learn per-lead waveform features. A standard stem, by contrast, mixes all 12 leads in its first convolution.
 
@@ -607,6 +838,8 @@ The search ran in three rounds:
 <p align="center">
   <img src="runs/s2_resnet_search/figures/curves.png" alt="S2 learning curves" width="100%">
 </p>
+
+</details>
 
 ---
 
@@ -632,3 +865,4 @@ The search ran in three rounds:
 18. Schuster, M., and Paliwal, K. K. (1997). Bidirectional recurrent neural networks. *IEEE Transactions on Signal Processing*, 45(11), 2673–2681. <https://doi.org/10.1109/78.650093>
 19. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. (2017). Attention is all you need. *Advances in Neural Information Processing Systems (NeurIPS)*, 5998–6008. <https://arxiv.org/abs/1706.03762>
 20. Xiong, R., Yang, Y., He, D., Zheng, K., Zheng, S., Xing, C., Zhang, H., Lan, Y., Wang, L., and Liu, T.-Y. (2020). On layer normalization in the Transformer architecture. *International Conference on Machine Learning (ICML)*, 10524–10533. <https://arxiv.org/abs/2002.04745>
+21. Cortes, C., and Vapnik, V. (1995). Support-vector networks. *Machine Learning*, 20(3), 273–297. <https://doi.org/10.1007/BF00994018>

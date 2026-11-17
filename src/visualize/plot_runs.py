@@ -18,6 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 
 from src.config import CLASSES, RUNS_DIR
 from src.evaluation.summarize import collect_runs
@@ -82,6 +83,21 @@ def band(ax, h: pd.DataFrame, col: str, color: str, label=None, **kw):
     return mean
 
 
+def variant_legend(fig, handles, top: float):
+    """Colour legend for the whole figure: one row at the top right when the labels are
+    few and short, otherwise below the panels (fewer columns for longer labels) so it
+    never meets the subtitle."""
+    labels = [h.get_label() for h in handles]
+    if len(handles) <= 6 and sum(map(len, labels)) <= 80:
+        fig.legend(handles=handles, loc="upper right", ncol=len(handles), fontsize=8,
+                   bbox_to_anchor=(1.0, top))
+    else:
+        longest = max(map(len, labels))
+        ncol = 4 if longest <= 28 else 3 if longest <= 40 else 2
+        fig.legend(handles=handles, loc="upper center", ncol=ncol, fontsize=8,
+                   bbox_to_anchor=(0.5, 0.0))
+
+
 def save(fig, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight", pad_inches=0.05)
@@ -89,7 +105,10 @@ def save(fig, path: Path):
     print("wrote", path)
 
 
-def plot_experiment(exp: str, variant_order: list[str] | None = None):
+def plot_experiment(exp: str, variant_order: list[str] | None = None,
+                    labels: dict[str, str] | None = None):
+    """`variant_order` fixes colour and legend order; `labels` maps variant -> legend text
+    (default: the variant name without the parts all variants share)."""
     exp_dir = RUNS_DIR / exp
     hist = load_histories(exp_dir)
     if hist.empty:
@@ -97,7 +116,8 @@ def plot_experiment(exp: str, variant_order: list[str] | None = None):
         return
     variants = variant_order or sorted(hist.variant.unique())
     colors = {v: SERIES[i % len(SERIES)] for i, v in enumerate(variants)}
-    labels, shared = short_labels(variants)
+    auto_labels, shared = short_labels(variants)
+    labels = {**auto_labels, **(labels or {})}
     n_seeds = hist.groupby("variant").seed.nunique()
     subtitle = exp + (f"  ·  {shared}" if shared else "")
     if n_seeds.max() > 1:
@@ -109,24 +129,27 @@ def plot_experiment(exp: str, variant_order: list[str] | None = None):
     fig, axes = plt.subplots(1, 3, figsize=(10.5, 3.0))
     for v in variants:
         h = hist[hist.variant == v]
-        band(axes[0], h, "val_loss", colors[v], label=f"{labels[v]} val")
-        band(axes[0], h, "train_loss", colors[v], label=f"{labels[v]} train", linestyle="--",
-             linewidth=1.4)
-        auc = band(axes[1], h, "val_macro_auc", colors[v], label=labels[v])
+        band(axes[0], h, "val_loss", colors[v], label=labels[v])
+        band(axes[0], h, "train_loss", colors[v], linestyle="--", linewidth=1.4)
+        auc = band(axes[1], h, "val_macro_auc", colors[v])
         best = auc.idxmax()
         axes[1].plot(best, auc[best], "o", color=colors[v], markersize=7,
                      markeredgecolor="white", markeredgewidth=1.5, zorder=5)
-        band(axes[2], h, "val_macro_f1", colors[v], label=labels[v])
+        band(axes[2], h, "val_macro_f1", colors[v])
     axes[0].set(title="(a) Loss (BCE)", xlabel="epoch", ylabel="loss")
-    axes[0].legend(fontsize=7.5, ncol=1)
+    # line-style key here; one colour legend for the whole figure
+    axes[0].legend(handles=[Line2D([], [], color=INK_2, label="validation"),
+                            Line2D([], [], color=INK_2, linestyle="--", linewidth=1.4, label="train")],
+                   fontsize=7.5, loc="upper left")
     axes[1].set(title="(b) Validation macro AUROC", xlabel="epoch")
     lo = hist.groupby(["variant", "epoch"]).val_macro_auc.mean().quantile(0.1)
     axes[1].set_ylim(max(lo - 0.01, 0.5), None)
     axes[1].annotate("dot = best epoch (mean curve)", xy=(0.98, 0.04), xycoords="axes fraction",
                      ha="right", fontsize=7.5, color=MUTED)
     axes[2].set(title="(c) Validation macro F1 @ 0.5", xlabel="epoch")
-    axes[2].legend(fontsize=8)
-    fig.suptitle(subtitle, x=0.01, ha="left", fontsize=8, color=MUTED, y=1.02)
+    handles = [Line2D([], [], color=colors[v], label=labels[v]) for v in variants]
+    variant_legend(fig, handles, top=1.08)
+    fig.suptitle(subtitle, x=0.01, ha="left", fontsize=8, color=MUTED, y=1.06)
     fig.tight_layout()
     save(fig, out / "curves.png")
 
@@ -142,9 +165,8 @@ def plot_experiment(exp: str, variant_order: list[str] | None = None):
     late = hist[hist.epoch > min(5, hist.epoch.max() // 2)]
     lo = min(late.groupby(["variant", "epoch"])[f"val_auc_{c}"].mean().min() for c in CLASSES)
     axes[0].set_ylim(max(lo - 0.01, 0.5), None)
-    handles, names = axes[0].get_legend_handles_labels()
-    fig.legend(handles, names, loc="upper right", ncol=len(variants), fontsize=8,
-               bbox_to_anchor=(1.0, 1.06))
+    handles = [Line2D([], [], color=colors[v], label=labels[v]) for v in variants]
+    variant_legend(fig, handles, top=1.06)
     fig.suptitle(subtitle, x=0.01, ha="left", fontsize=8, color=MUTED, y=1.04)
     fig.tight_layout()
     save(fig, out / "val_auc_per_class.png")
@@ -155,9 +177,11 @@ def plot_experiment(exp: str, variant_order: list[str] | None = None):
         return
     rows = ["macro"] + CLASSES
     cols = ["test_macro_auc"] + [f"test_auc_{c}" for c in CLASSES]
-    fig, ax = plt.subplots(figsize=(5.6, 0.45 * len(rows) + 0.9))
     present = [v for v in variants if v in set(runs.variant)]
-    offsets = np.linspace(-0.18, 0.18, len(present)) if len(present) > 1 else [0.0]
+    n = len(present)
+    fig, ax = plt.subplots(figsize=(5.6, len(rows) * (0.3 + 0.075 * n) + 0.9))
+    spread = min(0.34, 0.09 * (n - 1))
+    offsets = np.linspace(spread, -spread, n) if n > 1 else [0.0]  # first variant on top
     for off, v in zip(offsets, present):
         r = runs[runs.variant == v]
         mean, std = r[cols].mean().values, r[cols].std().fillna(0).values
@@ -172,7 +196,7 @@ def plot_experiment(exp: str, variant_order: list[str] | None = None):
     ax.grid(axis="y", visible=False)
     ax.set_xlabel("test AUROC (fold 10)   ·   dot = mean, line = ±1 std, faint = single seeds")
     ax.set_title("Test AUROC per class")
-    ax.legend(fontsize=8, loc="lower left", bbox_to_anchor=(0, 1.08), ncol=len(present))
+    ax.legend(fontsize=8, loc="lower left", bbox_to_anchor=(0, 1.06), ncol=min(n, 3))
     save(fig, out / "test_auc_per_class.png")
 
 

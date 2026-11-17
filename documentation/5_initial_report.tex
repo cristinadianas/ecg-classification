@@ -1,0 +1,187 @@
+\documentclass{article}
+\PassOptionsToPackage{numbers,compress}{natbib}
+\usepackage[preprint]{neurips_2026}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\hypersetup{colorlinks=true,allcolors=blue,pdftitle={ECG Classification Using the PTB-XL Dataset},pdfauthor={Nedelcu Radu-Ioan; Sava Antonia-Georgia; Savin Cristina-Diana}}
+
+\title{ECG Classification Using the PTB-XL Dataset}
+\author{%
+  Nedelcu Radu-Ioan\\
+  \texttt{radu\_ioan.nedelcu@stud.acs.upb.ro}\\[4pt]
+  Sava Antonia-Georgia\\
+  \texttt{antonia.sava@stud.acs.upb.ro}\\[4pt]
+  Savin Cristina-Diana\\
+  \texttt{cristina.savin1801@stud.acs.upb.ro}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report presents an exploratory analysis of PTB-XL, a publicly available dataset of 21,799 twelve-lead electrocardiograms (ECGs) from 18,869 patients. We examine diagnostic superclass frequencies and co-occurrence, patient age distribution, and representative ECG waveforms at 100 Hz and 500 Hz. These observations inform the next stages of an ECG classification project, including model development, evaluation, and experiments with fewer leads, self-attention, class imbalance, and augmentation.
+\end{abstract}
+
+\section{Dataset overview and data collection}
+
+PTB-XL was obtained from PhysioNet, an open-access repository of physiological and clinical data. The dataset contains 21,799 ECG recordings from 18,869 patients, collected between October 1989 and June 1996. Each recording contains a 10-second, 12-lead ECG signal, providing electrical measurements of the heart from different perspectives \citep{wagner2020}.
+
+The dataset provides two waveform versions: a 500 Hz version with higher temporal resolution and a downsampled 100 Hz version that requires less computational processing. Both versions contain the standard 12 ECG leads: I, II, III, aVR, aVL, aVF, and V1--V6. A 10-second recording sampled at 100 Hz contains 1,000 samples per lead, resulting in a signal matrix of $1{,}000\times12$ values.
+
+Diagnostic annotations were derived from clinical ECG reports and standardized using the SCP-ECG annotation scheme. Each recording could be annotated by up to two cardiologists, and a large proportion of records received a second cardiologist's review. Not every initial report was independently interpreted by two doctors; some reports were initially generated automatically by the ECG device. The dataset does not specify a single total number of distinct cardiologists involved in annotation. Personal identifiers and recording-site information were pseudonymized before public release \citep{wagner2020,physionet}.
+
+\section{Exploratory data analysis}
+
+\subsection{Distribution of diagnostic categories}
+
+We first examined the distribution of the five diagnostic superclasses used in this project:
+\textbf{NORM} (normal ECG), \textbf{MI} (myocardial infarction), \textbf{STTC} (ST/T changes), \textbf{CD} (conduction disturbance), and \textbf{HYP} (hypertrophy).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.82\linewidth]{figures/diagnostic_distribution.png}
+  \caption{Distribution of PTB-XL diagnostic superclasses. NORM is the most common category, while HYP is the least common of the five.}
+  \label{fig:diagnostic-distribution}
+\end{figure}
+
+NORM is the most frequently represented category, with 9,514 recordings (43.64\%). MI follows with 5,469 recordings (25.09\%), while STTC accounts for 5,235 recordings (24.01\%). CD is represented by 4,898 recordings (22.47\%). HYP is the least frequent category, with 2,649 recordings (approximately 12.15\%).
+
+These percentages do not sum to 100\% because PTB-XL is a multi-label dataset: a single ECG can receive more than one diagnostic superclass label. The categories must therefore not be interpreted as mutually exclusive groups.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.72\linewidth]{figures/diagnostic_cooccurrence.png}
+  \caption{Co-occurrence matrix for the five diagnostic superclasses. Off-diagonal cells count recordings assigned to both the corresponding row and column categories.}
+  \label{fig:cooccurrence}
+\end{figure}
+
+The co-occurrence matrix makes this overlap explicit. For example, MI and CD occur together in 1,794 recordings, while STTC co-occurs with HYP in 1,509 recordings and with MI in 1,339 recordings. The matrix is a diagnostic co-occurrence matrix rather than a model confusion matrix: it describes label relationships in the dataset, not errors made by a classifier.
+
+\subsection{Age distribution of patients}
+
+We examined the age distribution using unique patient identifiers rather than counting every ECG as a separate patient. The dataset is predominantly composed of middle-aged and older adults. The largest age group is 60--69 years, containing 4,462 patients, followed by the 50--59 group with 3,811 patients and the 70--79 group with 3,504 patients. Younger age groups are less represented, with 14 patients aged 0--9 and 447 aged 10--19. The 90+ group contains 257 patients.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\linewidth]{figures/age_distribution.png}
+  \caption{Age distribution of unique PTB-XL patients, grouped into ten-year intervals.}
+  \label{fig:age-distribution}
+\end{figure}
+
+An important detail concerns anonymization. In PTB-XL, ages above 89 are represented by the value 300 in the metadata. This is a privacy-protection placeholder, not a literal age; it prevents the exact age of very elderly individuals from being disclosed. For this analysis, those values were grouped into the 90+ category. This illustrates why implausible-looking values in medical datasets should be checked against the dataset documentation before being treated as data errors \citep{wagner2020}.
+
+\subsection{ECG signals at different sampling frequencies}
+
+To understand the waveform data, we visualized Lead I from the same 10-second recording at 100 Hz and 500 Hz. Both versions show the same broad pattern of repeated cardiac cycles, but the 500 Hz version contains five times as many samples and preserves finer temporal detail. The 100 Hz recording is a downsampled version of the higher-frequency signal.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\linewidth]{figures/ecg_leadI_100hz.png}
+  \caption{Lead I from a PTB-XL recording at 100 Hz over a 10-second interval.}
+  \label{fig:lead-100}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\linewidth]{figures/ecg_leadI_500hz.png}
+  \caption{The same Lead I recording at 500 Hz, showing greater temporal sampling density.}
+  \label{fig:lead-500}
+\end{figure}
+
+We will initially use 100 Hz recordings for faster experimentation, then switch to 500 Hz, hoping the additional signal detail will improve classification performance. Whether higher sampling frequency improves results will need to be tested experimentally.
+
+\subsection{Visualization of all 12 ECG leads}
+
+We plotted all 12 leads over the same 10-second interval, first in separate panels to make each waveform easier to inspect. The leads have different waveform shapes, amplitudes, and polarities because they measure the heart's electrical activity from different directions. Some leads contain prominent positive QRS complexes, while others show predominantly negative deflections. The leads consequently provide complementary views of the same cardiac activity.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.80\linewidth]{figures/ecg_12leads_limb.png}
+  \caption{Limb leads I, II, III, aVR, aVL, and aVF from a representative 100 Hz recording.}
+  \label{fig:limb-leads}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.80\linewidth]{figures/ecg_12leads_precordial.png}
+  \caption{Precordial leads V1--V6 from the same representative 100 Hz recording.}
+  \label{fig:precordial-leads}
+\end{figure}
+
+We also plotted the 12 channels on the same axes to compare their temporal patterns directly.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.90\linewidth]{figures/ecg_12leads_overlapped.png}
+  \caption{All 12 ECG leads overlapped on a shared amplitude axis. The shared timeline helps compare event timing, although differences in polarity and amplitude make the plot visually dense.}
+  \label{fig:overlapped-leads}
+\end{figure}
+
+The overlaid view makes the timing relationships between leads easier to compare, particularly for recurring cardiac complexes. However, the common amplitude scale causes some signals to overlap or obscure one another. Separate panels are therefore better for inspecting individual leads, while the combined plot offers a compact view of temporal correspondence between channels.
+
+\section{Related work and positioning}
+
+Our state-of-the-art reference is the PTB-XL benchmark of Strodthoff et al. \citep{strodthoff2021}. It trains models on folds 1--8 at 100 Hz and reports test macro AUROC on fold 10. For the superclass task, the reported deep-learning models fall within 0.01 macro AUROC of one another, as shown in Table~\ref{tab:benchmark}.
+
+\begin{table}[H]
+  \caption{Selected PTB-XL benchmark results reported by Strodthoff et al. \citep{strodthoff2021}.}
+  \label{tab:benchmark}
+  \centering
+  \begin{tabular}{lll}
+    \toprule
+    Model & Type & Macro AUROC \\
+    \midrule
+    resnet1d\_wang & 1D ResNet & 0.930 \\
+    xresnet1d101 & Deep 1D ResNet & 0.928 \\
+    lstm & Recurrent & 0.927 \\
+    fcn\_wang & Fully convolutional & 0.925 \\
+    inception1d & 1D Inception & 0.921 \\
+    lstm\_bidir & Bidirectional recurrent & 0.921 \\
+    Wavelet+NN & Hand-crafted features + MLP & 0.874 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The benchmark builds on the PTB-XL dataset paper by Wagner et al. \citep{wagner2020}, as well as time-series classification baselines from Wang et al. \citep{wang2017} and the InceptionTime architecture introduced by Ismail Fawaz et al. \citep{ismailfawaz2020}.
+
+We do not aim simply to exceed the benchmark's best macro AUROC of 0.930. Instead, we plan to extend the comparison in three directions: (1) self-attention, by adding a convolutional-stem Transformer and comparing it with convolutional and recurrent approaches; (2) fewer leads, by measuring how performance changes with six limb leads and with a single lead, as in wearable-device settings; and (3) class imbalance and augmentation, testing strategies beyond the plain binary cross-entropy training and lack of augmentation described for the benchmark. The project is in an exploratory stage, and these directions remain planned experiments rather than completed results.
+
+\section{Conclusion}
+
+This exploratory analysis establishes a baseline understanding of PTB-XL before model development. The diagnostic labels overlap, the patient population is concentrated among middle-aged and older adults, and the 12 leads contain complementary representations of cardiac electrical activity. We will begin experiments using 100 Hz signals for faster iteration and then evaluate whether 500 Hz improves performance. The next steps are to build and evaluate multilabel classification models, compare architectures, and investigate reduced-lead settings, class imbalance, and augmentation.
+
+\clearpage
+\begin{thebibliography}{9}
+\small
+\bibitem{wagner2020}
+Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F. I., Samek, W., and Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset. \emph{Scientific Data}, 7, 154. \url{https://doi.org/10.1038/s41597-020-0495-6}.
+
+\bibitem{physionet}
+Wagner, P., et al. (2020). PTB-XL, a large publicly available electrocardiography dataset, version 1.0.3. PhysioNet. \url{https://physionet.org/content/ptb-xl/1.0.3/}.
+
+\bibitem{strodthoff2021}
+Strodthoff, N., Wagner, P., Schaeffter, T., and Samek, W. (2021). Deep learning for ECG analysis: Benchmarks and insights from PTB-XL. \emph{IEEE Journal of Biomedical and Health Informatics}, 25(5), 1519--1528. \url{https://doi.org/10.1109/JBHI.2020.3022989}.
+
+\bibitem{wang2017}
+Wang, Z., Yan, W., and Oates, T. (2017). Time series classification from scratch with deep neural networks: A strong baseline. In \emph{2017 International Joint Conference on Neural Networks (IJCNN)}, pp. 1578--1585. IEEE.
+
+\bibitem{ismailfawaz2020}
+Ismail Fawaz, H., Lucas, B., Forestier, G., Pelletier, C., Schmidt, D. F., Weber, J., Webb, G. I., Idoumghar, L., Muller, P.-A., and Petitjean, F. (2020). InceptionTime: Finding AlexNet for time series classification. \emph{Data Mining and Knowledge Discovery}, 34(6), 1936--1962. \url{https://doi.org/10.1007/s10618-020-00710-y}.
+
+\bibitem{jepa2024}
+[Authors]. (2024). Self-supervised pre-training with joint-embedding predictive architecture boosts ECG classification performance. arXiv preprint arXiv:2410.13867. \url{https://arxiv.org/abs/2410.13867}.
+
+\bibitem{scaling2026}
+[Authors]. (2026). How do electrocardiogram models scale? arXiv preprint arXiv:2605.17276. \url{https://arxiv.org/abs/2605.17276}.
+\end{thebibliography}
+
+\end{document}

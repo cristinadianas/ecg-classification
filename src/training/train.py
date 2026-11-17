@@ -40,7 +40,7 @@ import torch.nn.functional as F
 
 from src.config import CLASSES, LEAD_SETS, ROOT, RUNS_DIR, SAMPLING_RATES, STANDARD
 from src.data.augment import AVAILABLE as AUGMENTATIONS
-from src.data.augment import Augmenter, parse_augment
+from src.data.augment import Augmenter, eval_window, parse_augment
 from src.data.dataset import Standardizer, load_splits, resolve_leads
 from src.evaluation.evaluate import autocast, evaluate_run, predict_logits, resolve_device
 from src.evaluation.metrics import compute_metrics
@@ -54,8 +54,9 @@ def default_config(**overrides) -> dict:
         "exp": "scratch", "model": "resnet1d18", "model_kwargs": {}, "seed": 0, "tag": "",
         "pos_weight": False, "device": "auto", "amp": True, "run_name": None,
         "overwrite": False, "bootstrap": STANDARD["bootstrap"],
-        **{k: STANDARD[k] for k in ("fs", "leads", "augment", "epochs", "batch_size", "lr",
-                                     "weight_decay", "pct_start", "dropout")},
+        **{k: STANDARD[k] for k in ("fs", "leads", "augment", "standardize", "epochs",
+                                     "batch_size", "lr", "weight_decay", "adam_beta2",
+                                     "pct_start", "dropout")},
     }
     unknown = set(overrides) - set(cfg)
     if unknown:
@@ -74,6 +75,8 @@ def make_run_name(cfg: dict) -> tuple[str, str]:
         parts.append("aug-" + "+".join(aug))
     if cfg["pos_weight"]:
         parts.append("posw")
+    if cfg["standardize"] != STANDARD["standardize"]:
+        parts.append(f"std-{cfg['standardize']}")
     if cfg["tag"]:
         parts.append(cfg["tag"])
     variant = "_".join(parts)
@@ -118,7 +121,7 @@ def train(cfg: dict) -> Path:
     # ---- data
     t0 = time.time()
     splits = load_splits(cfg["fs"], cfg["leads"])
-    scaler = Standardizer().fit(splits["train"].x)
+    scaler = Standardizer(mode=cfg["standardize"]).fit(splits["train"].x)
     for s in splits.values():
         scaler.transform(s.x)
     scaler.save(run_dir / "norm_stats.npz")
@@ -137,7 +140,8 @@ def train(cfg: dict) -> Path:
                         **cfg["model_kwargs"]).to(device)
     n_params = count_parameters(model)
     steps_per_epoch = len(x_tr) // cfg["batch_size"]  # drop the last partial batch
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"],
+                                  betas=(0.9, cfg["adam_beta2"]))  # beta1 is cycled by OneCycleLR
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=cfg["lr"], total_steps=cfg["epochs"] * steps_per_epoch,
         pct_start=cfg["pct_start"], anneal_strategy="cos")
@@ -148,12 +152,14 @@ def train(cfg: dict) -> Path:
     augmenter = Augmenter(cfg["augment"], cfg["fs"],
                           torch.Generator(device=device).manual_seed(cfg["seed"]))
     perm_gen = torch.Generator().manual_seed(cfg["seed"])
+    window = eval_window(cfg["augment"], cfg["fs"])  # None unless trained on random crops
 
     lead_tag, lead_idx = resolve_leads(cfg["leads"])
     meta = {**cfg, "run_name": name, "variant": variant, "lead_tag": lead_tag,
             "lead_indices": lead_idx, "n_leads": n_leads, "n_params": n_params,
             "n_train": len(splits["train"].y), "n_val": len(splits["val"].y),
             "n_test": len(splits["test"].y), "steps_per_epoch": steps_per_epoch,
+            "eval_window": window, "eval_aggregate": "max" if window else None,
             "device": torch.cuda.get_device_name(device) if device.type == "cuda" else "cpu",
             "torch": torch.__version__, "git_commit": git_commit(),
             "started_at": datetime.now().isoformat(timespec="seconds"), "status": "running"}
@@ -189,7 +195,7 @@ def train(cfg: dict) -> Path:
 
         tr_prob = torch.sigmoid(torch.cat(train_logits)).cpu().numpy()
         tr_true = torch.cat(train_targets).cpu().numpy()
-        va_logits = predict_logits(model, x_va, device, amp)
+        va_logits = predict_logits(model, x_va, device, amp, window=window)
         va_loss = F.binary_cross_entropy_with_logits(va_logits.cpu(), y_va).item()
         va_prob = torch.sigmoid(va_logits).cpu().numpy()
 
@@ -241,7 +247,10 @@ def build_parser():
     p.add_argument("--batch-size", type=int, default=S["batch_size"])
     p.add_argument("--lr", type=float, default=S["lr"])
     p.add_argument("--weight-decay", type=float, default=S["weight_decay"])
+    p.add_argument("--adam-beta2", type=float, default=S["adam_beta2"])
     p.add_argument("--pct-start", type=float, default=S["pct_start"])
+    p.add_argument("--standardize", default=S["standardize"], choices=Standardizer.MODES,
+                   help="per-lead z-scoring (standard) or one global mean/std (benchmark)")
     p.add_argument("--dropout", type=float, default=S["dropout"])
     p.add_argument("--pos-weight", action="store_true",
                    help="weight positives by (1-p)/p in the BCE loss (class-imbalance experiments)")

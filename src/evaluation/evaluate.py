@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 
 from src.config import CLASSES, ROOT, RUNS_DIR, STANDARD
+from src.data.augment import EVAL_STRIDE_FRACTION, eval_window
 from src.data.dataset import Standardizer, load_splits
 from src.evaluation.metrics import bootstrap_ci, compute_metrics, tune_thresholds
 from src.evaluation.summarize import write_summary
@@ -48,13 +49,29 @@ def autocast(device: torch.device, enabled: bool):
 
 @torch.no_grad()
 def predict_logits(model, x: torch.Tensor, device: torch.device, amp: bool,
-                   batch_size: int = 512) -> torch.Tensor:
+                   batch_size: int = 512, window: int | None = None) -> torch.Tensor:
+    """One row of class logits per record.
+
+    window: None -> the model sees the full record. Otherwise (models trained with
+    random crops) the record is cut into sliding windows of `window` samples with
+    stride window * EVAL_STRIDE_FRACTION, and each class takes the maximum over the
+    windows (as in the benchmark; max of logits = max of probabilities).
+    """
     model.eval()
     out = []
     for i in range(0, len(x), batch_size):
         xb = x[i:i + batch_size].to(device, non_blocking=True)
+        if window is None or window >= xb.shape[-1]:
+            with autocast(device, amp):
+                out.append(model(xb).float())
+            continue
+        stride = max(1, int(window * EVAL_STRIDE_FRACTION))
+        w = xb.unfold(2, window, stride)                      # (B, leads, n_windows, window)
+        b, c, n_win, length = w.shape
+        w = w.permute(0, 2, 1, 3).reshape(b * n_win, c, length)
         with autocast(device, amp):
-            out.append(model(xb).float())
+            logits = model(w).float().view(b, n_win, -1)
+        out.append(logits.amax(dim=1))
     return torch.cat(out)
 
 
@@ -87,9 +104,10 @@ def evaluate_run(run_dir: Path, checkpoint: str = "best", splits=None, device: s
     out = {"run_name": cfg["run_name"], "variant": cfg["variant"], "checkpoint": checkpoint,
            "epoch": epoch}
     probs = {}
+    window = eval_window(cfg.get("augment", "none"), cfg["fs"])
     for k in ("val", "test"):
         s = splits[k]
-        logits = predict_logits(model, torch.from_numpy(s.x), dev, amp).cpu()
+        logits = predict_logits(model, torch.from_numpy(s.x), dev, amp, window=window).cpu()
         probs[k] = torch.sigmoid(logits).numpy()
         out[k] = {"loss": F.binary_cross_entropy_with_logits(logits, torch.from_numpy(s.y)).item(),
                   **compute_metrics(s.y, probs[k])}
